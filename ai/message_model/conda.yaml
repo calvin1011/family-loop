@@ -1,0 +1,9 @@
+channels:
+- defaults
+dependencies:
+- python=3.8
+- pip
+- pip:
+  - mlflow
+  - pandas
+name: mlflow-env
