@@ -10,7 +10,7 @@ interface User {
   provider: 'google' | 'phone' | 'email'; // How they signed in
 }
 
-// Define what our auth context provides
+// Define what our (auth) context provides
 interface AuthContextType {
   // Current user state
   user: User | null;
@@ -43,14 +43,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const checkAuthState = async () => {
     try {
-      // In real implementation, this would check Firebase auth state
-      // For now, we'll simulate checking saved auth state
+      // In real implementation, this would check Firebase (auth) state
+      // For now, we'll simulate checking saved (auth) state
       const savedUser = await getSavedUser();
       if (savedUser) {
         setUser(savedUser);
       }
     } catch (error) {
-      console.error('Error checking auth state:', error);
+      console.error('Error checking (auth) state:', error);
     } finally {
       setIsLoading(false);
     }
@@ -62,7 +62,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return new Promise((resolve) => {
       setTimeout(() => {
         // For now, return null (no saved user)
-        // Later this will check Firebase auth state
+        // Later this will check Firebase (auth) state
         resolve(null);
       }, 1000);
     });
@@ -244,7 +244,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   );
 };
 
-// Custom hook to use auth context
+// Custom hook to use (auth) context
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (!context) {

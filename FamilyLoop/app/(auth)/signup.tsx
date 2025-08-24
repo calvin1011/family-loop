@@ -42,7 +42,7 @@ export default function SignUpScreen() {
 
     try {
       await signUp(email, password, displayName);
-      // Navigation will be handled by auth state change
+      // Navigation will be handled by (auth) state change
     } catch (error) {
       Alert.alert('Sign Up Failed', 'Unable to create account. Please try again.');
     }
@@ -59,7 +59,7 @@ export default function SignUpScreen() {
 
   // Navigate back to login
   const goToLogin = () => {
-    router.push('../app/auth/signup.tsx');
+    router.push('/(auth)/login');
   };
 
   return (

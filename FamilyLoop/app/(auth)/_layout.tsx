@@ -4,7 +4,7 @@ export default function AuthLayout() {
   return (
     <Stack
       screenOptions={{
-        headerShown: false, //hiding header for cleaner auth experience
+        headerShown: false, //hiding header for cleaner (auth) experience
         presentation: 'card',
       }}
     >

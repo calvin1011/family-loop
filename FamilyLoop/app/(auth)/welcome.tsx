@@ -4,11 +4,11 @@ import { router } from 'expo-router';
 
 export default function WelcomeScreen() {
   const goToLogin = () => {
-    router.push('../app/auth/login.tsx');
+    router.push('/(auth)/login');
   };
 
   const goToSignUp = () => {
-    router.push('../app/auth/signup.tsx');
+    router.push('/(auth)/signup');
   };
 
   return (

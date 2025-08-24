@@ -16,7 +16,7 @@ export default function LoginScreen() {
   const handleGoogleSignIn = async () => {
     try {
       await signInWithGoogle();
-      // Navigation will be handled by auth state change
+      // Navigation will be handled by (auth) state change
     } catch (error) {
       Alert.alert('Sign In Failed', 'Unable to sign in with Google. Please try again.');
     }
@@ -52,7 +52,7 @@ export default function LoginScreen() {
 
   // Navigate to sign up
   const goToSignUp = () => {
-    router.push('../app/auth/signup.tsx');
+    router.push('/(auth)/signup');
   };
 
   return (
