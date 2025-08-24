@@ -16,8 +16,8 @@ function RootLayoutNav() {
   useEffect(() => {
     if (!isLoading) {
       if (!isAuthenticated) {
-        // User not logged in - redirect to welcome screen
-        router.replace('/(auth)/welcome');
+        // User not logged in - redirect to onboarding first
+        router.replace('/(auth)/onboarding');
       } else {
         // User is logged in - redirect to main app
         router.replace('/(tabs)');
