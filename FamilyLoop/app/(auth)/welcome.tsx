@@ -22,7 +22,7 @@ export default function WelcomeScreen() {
 
         <View style={styles.featuresContainer}>
           <View style={styles.feature}>
-            <Text style={styles.featureIcon}>🤖</Text>
+            <Text style={styles.featureIcon}>🧠</Text>
             <Text style={styles.featureText}>Smart relationship insights</Text>
           </View>
 
