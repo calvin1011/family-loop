@@ -1,241 +1,220 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, ReactNode } from 'react';
+import { Platform } from 'react-native';
+import {
+  getAuth,
+  onAuthStateChanged,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  signOut as firebaseSignOut,
+  updateProfile as firebaseUpdateProfile,
+  GoogleAuthProvider,
+  signInWithCredential,
+  FirebaseAuthTypes,
+  signInWithPhoneNumber,
+} from '@react-native-firebase/auth'
+import { useIdTokenAuthRequest } from "expo-auth-session/providers/google";
+import * as WebBrowser from 'expo-web-browser';
+import Constants from 'expo-constants';
 
-// Define what a user looks like in our app
+WebBrowser.maybeCompleteAuthSession();
+
 interface User {
-  id: string;
-  email?: string;
-  phoneNumber?: string;
-  displayName?: string;
-  photoURL?: string;
-  provider: 'google' | 'phone' | 'email'; // How they signed in
+  uid: string;
+  email?: string | null;
+  phoneNumber?: string | null;
+  displayName?: string | null;
+  photoURL?: string | null;
+  provider?: string | null; // How user signed in
 }
 
 // Define what our (auth) context provides
 interface AuthContextType {
-  // Current user state
   user: User | null;
   isLoading: boolean;
   isAuthenticated: boolean;
-
-  // Auth actions
   signInWithGoogle: () => Promise<void>;
-  signInWithPhone: (phoneNumber: string) => Promise<void>;
+  signInWithPhone: (phoneNumber: string) => Promise<FirebaseAuthTypes.ConfirmationResult>;
+  confirmPhoneCode: (confirmation: FirebaseAuthTypes.ConfirmationResult, code: string) => Promise<void>;
   signInWithEmail: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, displayName: string) => Promise<void>;
   signOut: () => Promise<void>;
-
-  // User profile actions
   updateProfile: (updates: Partial<User>) => Promise<void>;
 }
 
 // Create the context
 const AuthContext = createContext<AuthContextType | null>(null);
 
-// Provider component that wraps your app
+// Get environment variables from Expo config
+const extra = Constants.expoConfig?.extra;
+
+const authInstance = getAuth();
+
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [isLoading, setIsLoading] = useState(true); // Start with loading true
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Check if user is already logged in when app starts
+  // Configuration for Google Authentication using the extra field
+  const googleAuthConfig = {
+    webClientId: extra?.GOOGLE_WEB_CLIENT_ID as string,
+    androidClientId: extra?.GOOGLE_ANDROID_CLIENT_ID as string,
+    iosClientId: extra?.GOOGLE_IOS_CLIENT_ID as string,
+    scopes: ["profile", "email"],
+  };
+
+  // Initialize Google Sign-In request
+  const [request, response, promptAsync] = useIdTokenAuthRequest({
+    clientId: Platform.select({
+      web: googleAuthConfig.webClientId,
+      android: googleAuthConfig.androidClientId,
+      ios: googleAuthConfig.iosClientId,
+    }),
+    scopes: googleAuthConfig.scopes,
+  });
+
+
   useEffect(() => {
-    checkAuthState();
+    const subscriber = onAuthStateChanged(authInstance, (firebaseUser) => {
+      if (firebaseUser) {
+        const appUser: User = {
+          uid: firebaseUser.uid,
+          email: firebaseUser.email,
+          displayName: firebaseUser.displayName,
+          photoURL: firebaseUser.photoURL,
+          provider: firebaseUser.providerData?.[0]?.providerId
+        };
+        setUser(appUser);
+      } else {
+        setUser(null);
+      }
+      setIsLoading(false);
+    });
+    return subscriber;
   }, []);
 
-  const checkAuthState = async () => {
-    try {
-      // In real implementation, this would check Firebase (auth) state
-      // For now, we'll simulate checking saved (auth) state
-      const savedUser = await getSavedUser();
-      if (savedUser) {
-        setUser(savedUser);
-      }
-    } catch (error) {
-      console.error('Error checking (auth) state:', error);
-    } finally {
-      setIsLoading(false);
+  // Handle Google sign-in response
+  useEffect(() => {
+    if (response?.type === 'success') {
+      const { id_token } = response.params;
+      const credential = GoogleAuthProvider.credential(id_token);
+      setIsLoading(true);
+      signInWithCredential(authInstance, credential)
+        .then(() => {
+
+        })
+        .catch((error) => {
+          console.error("Firebase credential error:", error);
+        })
+        .finally(() => setIsLoading(false));
     }
-  };
+  }, [response]);
 
-  // Simulate getting saved user (in real app, this would be Firebase)
-  const getSavedUser = async (): Promise<User | null> => {
-    // Simulate async storage check
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        // For now, return null (no saved user)
-        // Later this will check Firebase (auth) state
-        resolve(null);
-      }, 1000);
-    });
-  };
-
-  // Google Sign In
+  // Google Sign In trigger
   const signInWithGoogle = async () => {
     try {
       setIsLoading(true);
-
-      // TODO: Implement actual Google Sign In with Firebase
-      // For now, simulate successful Google sign in
-      const mockGoogleUser: User = {
-        id: 'google_' + Date.now(),
-        email: 'user@gmail.com',
-        displayName: 'Test User',
-        photoURL: 'https://via.placeholder.com/150',
-        provider: 'google'
-      };
-
-      // Simulate API call delay
-      await new Promise(resolve => setTimeout(resolve, 1500));
-
-      setUser(mockGoogleUser);
-      await saveUser(mockGoogleUser);
-
+      await promptAsync();
     } catch (error) {
-      console.error('Google sign in error:', error);
+      console.error("Sign-in error:", error);
       throw error;
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Phone Sign In
-  const signInWithPhone = async (phoneNumber: string) => {
+  const signInWithPhone = async (phoneNumber: string): Promise<FirebaseAuthTypes.ConfirmationResult> => {
+    setIsLoading(true);
     try {
-      setIsLoading(true);
-
-      // TODO: Implement actual phone verification with Firebase
-      const mockPhoneUser: User = {
-        id: 'phone_' + Date.now(),
-        phoneNumber: phoneNumber,
-        displayName: 'Phone User',
-        provider: 'phone'
-      };
-
-      // Simulate verification process
-      await new Promise(resolve => setTimeout(resolve, 2000));
-
-      setUser(mockPhoneUser);
-      await saveUser(mockPhoneUser);
-
+      const confirmation = await signInWithPhoneNumber(authInstance, phoneNumber);
+      return confirmation;
     } catch (error) {
-      console.error('Phone sign in error:', error);
+      console.error('Phone sign-in error:', error);
       throw error;
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Email/Password Sign In
+  // Confirm the phone verification code
+  const confirmPhoneCode = async (confirmation: FirebaseAuthTypes.ConfirmationResult, code: string) => {
+    setIsLoading(true);
+    try {
+      await confirmation.confirm(code);
+    } catch (error) {
+      console.error('Verification code error:', error);
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const signInWithEmail = async (email: string, password: string) => {
+    setIsLoading(true);
     try {
-      setIsLoading(true);
-
-      // TODO: Implement actual email sign in with Firebase
-      const mockEmailUser: User = {
-        id: 'email_' + Date.now(),
-        email: email,
-        displayName: email.split('@')[0], // Use email prefix as name
-        provider: 'email'
-      };
-
-      // Simulate sign in process
-      await new Promise(resolve => setTimeout(resolve, 1500));
-
-      setUser(mockEmailUser);
-      await saveUser(mockEmailUser);
-
+      await signInWithEmailAndPassword(authInstance, email, password);
     } catch (error) {
-      console.error('Email sign in error:', error);
+      console.error('Email sign-in error:', error);
       throw error;
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Sign Up with Email
   const signUp = async (email: string, password: string, displayName: string) => {
+    setIsLoading(true);
     try {
-      setIsLoading(true);
-
-      // TODO: Implement actual sign up with Firebase
-      const newUser: User = {
-        id: 'new_' + Date.now(),
-        email: email,
-        displayName: displayName,
-        provider: 'email'
-      };
-
-      // Simulate account creation
-      await new Promise(resolve => setTimeout(resolve, 2000));
-
-      setUser(newUser);
-      await saveUser(newUser);
-
+      const userCredential = await createUserWithEmailAndPassword(authInstance, email, password);
+      if (userCredential.user) {
+        await firebaseUpdateProfile(userCredential.user, { displayName: displayName });
+      }
     } catch (error) {
-      console.error('Sign up error:', error);
+      console.error('Sign-up error:', error);
       throw error;
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Sign Out
-  const signOut = async () => {
-    try {
-      setIsLoading(true);
+  const signOut = async (): Promise<void> => {
+  setIsLoading(true);
+  try {
+    await firebaseSignOut(authInstance);
+  } catch (error) {
+    console.error('Sign out error:', error);
+    throw error;
+  } finally {
+    setIsLoading(false);
+  }
+};
 
-      // TODO: Sign out from Firebase
-      await clearSavedUser();
-      setUser(null);
-
-    } catch (error) {
-      console.error('Sign out error:', error);
-      throw error;
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Update User Profile
   const updateProfile = async (updates: Partial<User>) => {
-    if (!user) return;
-
+    if (!authInstance.currentUser) return;
     try {
-      const updatedUser = { ...user, ...updates };
-      setUser(updatedUser);
-      await saveUser(updatedUser);
+      await firebaseUpdateProfile(authInstance.currentUser, {
+        displayName: updates.displayName,
+        photoURL: updates.photoURL,
+      });
     } catch (error) {
       console.error('Profile update error:', error);
       throw error;
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  // Helper functions for saving/loading user data
-  const saveUser = async (user: User) => {
-    // TODO: Save to secure storage
-    // For now, just log that we would save
-    console.log('Would save user to secure storage:', user.id);
-  };
-
-  const clearSavedUser = async () => {
-    // TODO: Clear from secure storage
-    console.log('Would clear saved user from storage');
-  };
-
-  // Calculate derived state
   const isAuthenticated = user !== null;
 
-  // Context value
-  const value: AuthContextType = {
+  const value = useMemo(() => ({
     user,
     isLoading,
     isAuthenticated,
     signInWithGoogle,
     signInWithPhone,
+    confirmPhoneCode,
     signInWithEmail,
     signUp,
     signOut,
     updateProfile,
-  };
+  }), [user, isLoading, isAuthenticated, signInWithPhone, confirmPhoneCode, signInWithEmail, signUp, signOut, updateProfile, signInWithGoogle]);
 
   return (
     <AuthContext.Provider value={value}>
@@ -244,7 +223,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   );
 };
 
-// Custom hook to use (auth) context
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (!context) {
@@ -252,6 +230,3 @@ export const useAuth = () => {
   }
   return context;
 };
-
-// Export the context for direct access if needed
-export { AuthContext };

@@ -24,17 +24,14 @@ export default function SignUpScreen() {
 
   // Handle sign up
   const handleSignUp = async () => {
-    // Validation
     if (!displayName || !email || !password || !confirmPassword) {
       Alert.alert('Missing Information', 'Please fill in all fields.');
       return;
     }
-
     if (password !== confirmPassword) {
       Alert.alert('Password Mismatch', 'Passwords do not match.');
       return;
     }
-
     if (password.length < 6) {
       Alert.alert('Weak Password', 'Password should be at least 6 characters.');
       return;
@@ -42,7 +39,7 @@ export default function SignUpScreen() {
 
     try {
       await signUp(email, password, displayName);
-      // Navigation will be handled by (auth) state change
+      // The auth state listener in AuthContext will automatically redirect the user on success
     } catch (error) {
       Alert.alert('Sign Up Failed', 'Unable to create account. Please try again.');
     }
@@ -57,7 +54,6 @@ export default function SignUpScreen() {
     }
   };
 
-  // Navigate back to login
   const goToLogin = () => {
     router.push('/(auth)/login');
   };
@@ -68,31 +64,24 @@ export default function SignUpScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-
-        {/* Header */}
         <View style={styles.header}>
           <Text style={styles.title}>Create Account</Text>
           <Text style={styles.subtitle}>
-            Join Family Loop and start nurturing your relationships
+            Connect with loved ones and strengthen your family bonds
           </Text>
         </View>
-
-        {/* Form */}
         <View style={styles.formContainer}>
-
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Full Name</Text>
             <TextInput
               style={styles.input}
               value={displayName}
               onChangeText={setDisplayName}
-              placeholder="Your full name"
-              autoCapitalize="words"
+              placeholder="Your Name"
               autoCorrect={false}
               placeholderTextColor="#A0A0A0"
             />
           </View>
-
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Email</Text>
             <TextInput
@@ -106,19 +95,17 @@ export default function SignUpScreen() {
               placeholderTextColor="#A0A0A0"
             />
           </View>
-
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Password</Text>
             <TextInput
               style={styles.input}
               value={password}
               onChangeText={setPassword}
-              placeholder="Create a password (6+ characters)"
+              placeholder="Create a password"
               secureTextEntry
               placeholderTextColor="#A0A0A0"
             />
           </View>
-
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Confirm Password</Text>
             <TextInput
@@ -130,45 +117,41 @@ export default function SignUpScreen() {
               placeholderTextColor="#A0A0A0"
             />
           </View>
-
           <TouchableOpacity
             style={[styles.primaryButton, isLoading && styles.buttonDisabled]}
             onPress={handleSignUp}
             disabled={isLoading}
           >
             <Text style={styles.primaryButtonText}>
-              {isLoading ? 'Creating Account...' : 'Create Account'}
+              {isLoading ? 'Creating...' : 'Sign Up'}
             </Text>
           </TouchableOpacity>
+        </View>
 
-          {/* Divider */}
-          <View style={styles.divider}>
-            <View style={styles.dividerLine} />
-            <Text style={styles.dividerText}>or</Text>
-            <View style={styles.dividerLine} />
-          </View>
+        <View style={styles.divider}>
+          <View style={styles.dividerLine} />
+          <Text style={styles.dividerText}>OR</Text>
+          <View style={styles.dividerLine} />
+        </View>
 
-          {/* Google Sign Up */}
+        <View style={styles.socialButtons}>
           <TouchableOpacity
             style={[styles.googleButton, isLoading && styles.buttonDisabled]}
             onPress={handleGoogleSignUp}
             disabled={isLoading}
           >
             <Text style={styles.googleButtonText}>
-              {isLoading ? 'Connecting...' : 'Sign up with Google'}
+              {isLoading ? 'Connecting...' : 'Continue with Google'}
             </Text>
           </TouchableOpacity>
-
         </View>
 
-        {/* Footer */}
         <View style={styles.footer}>
           <Text style={styles.footerText}>Already have an account?</Text>
           <TouchableOpacity onPress={goToLogin}>
-            <Text style={styles.linkText}>Sign in</Text>
+            <Text style={styles.linkText}>Sign In</Text>
           </TouchableOpacity>
         </View>
-
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -177,68 +160,69 @@ export default function SignUpScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8F9FA',
+    backgroundColor: '#F7F2EE',
   },
   scrollContent: {
     flexGrow: 1,
-    justifyContent: 'center',
-    padding: 24,
+    paddingHorizontal: 20,
+    paddingTop: 80,
+    paddingBottom: 40,
   },
   header: {
     marginBottom: 40,
-    alignItems: 'center',
   },
   title: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: '#2C3E50',
-    marginBottom: 8,
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: '#333',
     textAlign: 'center',
+    marginBottom: 8,
   },
   subtitle: {
     fontSize: 16,
-    color: '#7F8C8D',
+    color: '#666',
     textAlign: 'center',
-    lineHeight: 22,
-    maxWidth: 280,
   },
   formContainer: {
-    marginBottom: 32,
+    width: '100%',
+    alignItems: 'center',
   },
   inputGroup: {
+    width: '100%',
     marginBottom: 20,
   },
   label: {
     fontSize: 16,
-    color: '#2C3E50',
+    fontWeight: '600',
+    color: '#444',
     marginBottom: 8,
-    fontWeight: '500',
   },
   input: {
-    backgroundColor: '#FFFFFF',
+    width: '100%',
+    backgroundColor: '#fff',
+    padding: 15,
+    borderRadius: 12,
+    fontSize: 16,
     borderWidth: 1,
     borderColor: '#E0E0E0',
-    borderRadius: 12,
-    padding: 16,
-    fontSize: 16,
-    color: '#2C3E50',
   },
   primaryButton: {
-    backgroundColor: '#3498DB',
+    width: '100%',
+    backgroundColor: '#34A853',
+    padding: 18,
     borderRadius: 12,
-    padding: 16,
     alignItems: 'center',
-    marginTop: 8,
+    marginBottom: 20,
   },
   primaryButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: 'bold',
   },
   divider: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginVertical: 24,
+    marginVertical: 20,
   },
   dividerLine: {
     flex: 1,
@@ -246,38 +230,42 @@ const styles = StyleSheet.create({
     backgroundColor: '#E0E0E0',
   },
   dividerText: {
-    marginHorizontal: 16,
-    color: '#95A5A6',
+    marginHorizontal: 10,
+    color: '#888',
     fontSize: 14,
   },
+  socialButtons: {
+    width: '100%',
+  },
   googleButton: {
-    backgroundColor: '#FFFFFF',
+    width: '100%',
+    backgroundColor: '#F5F5F5',
+    padding: 18,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginBottom: 20,
     borderWidth: 1,
     borderColor: '#E0E0E0',
-    borderRadius: 12,
-    padding: 16,
-    alignItems: 'center',
   },
   googleButtonText: {
-    color: '#2C3E50',
+    color: '#444',
     fontSize: 16,
     fontWeight: '600',
   },
-  buttonDisabled: {
-    opacity: 0.6,
-  },
   footer: {
+    marginTop: 'auto',
     alignItems: 'center',
-    marginTop: 20,
   },
   footerText: {
     fontSize: 16,
-    color: '#7F8C8D',
-    marginBottom: 8,
+    color: '#666',
   },
   linkText: {
     fontSize: 16,
-    color: '#3498DB',
-    fontWeight: '500',
+    color: '#34A853',
+    fontWeight: 'bold',
+  },
+  buttonDisabled: {
+    opacity: 0.5,
   },
 });

@@ -26,7 +26,7 @@ export class NameDetector {
       }
     }
 
-    return 'Contact'; // Default if no pattern matches
+    return 'Contact';
   }
 
   autoGroupContacts(contacts) {

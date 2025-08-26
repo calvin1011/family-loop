@@ -1,22 +1,26 @@
+// FamilyLoop/app/(auth)/login.tsx
 import React, { useState } from 'react';
-import {View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Alert, KeyboardAvoidingView, Platform,} from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Alert, KeyboardAvoidingView, Platform } from 'react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { router } from 'expo-router';
+import { FirebaseAuthTypes } from '@react-native-firebase/auth';
 
 export default function LoginScreen() {
-  const { signInWithGoogle, signInWithPhone, signInWithEmail, isLoading } = useAuth();
+  const { signInWithGoogle, signInWithPhone, confirmPhoneCode, signInWithEmail, isLoading } = useAuth();
 
   // Form state
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
+  const [verificationCode, setVerificationCode] = useState(''); // New state for the verification code
+  const [confirmation, setConfirmation] = useState<FirebaseAuthTypes.ConfirmationResult | null>(null); // New state to hold the confirmation object
   const [authMethod, setAuthMethod] = useState<'email' | 'phone' | 'google'>('email');
 
   // Handle Google Sign In
   const handleGoogleSignIn = async () => {
     try {
       await signInWithGoogle();
-      // Navigation will be handled by (auth) state change
+      // Navigation will be handled by AuthProvider state change
     } catch (error) {
       Alert.alert('Sign In Failed', 'Unable to sign in with Google. Please try again.');
     }
@@ -28,7 +32,6 @@ export default function LoginScreen() {
       Alert.alert('Missing Information', 'Please enter both email and password.');
       return;
     }
-
     try {
       await signInWithEmail(email, password);
     } catch (error) {
@@ -42,15 +45,32 @@ export default function LoginScreen() {
       Alert.alert('Missing Information', 'Please enter your phone number.');
       return;
     }
-
     try {
-      await signInWithPhone(phoneNumber);
+      // This sends the code and gives us back a confirmation object
+      const confirmationResult = await signInWithPhone(phoneNumber);
+      setConfirmation(confirmationResult);
+      Alert.alert('Code Sent', 'Please enter the verification code sent to your phone.');
     } catch (error) {
-      Alert.alert('Sign In Failed', 'Unable to verify phone number. Please try again.');
+      Alert.alert('Sign In Failed', 'Unable to send verification code. Please try again.');
     }
   };
 
-  // Navigate to sign up
+  // Handle Phone Code Confirmation
+  const handlePhoneCodeConfirm = async () => {
+    if (!verificationCode) {
+      Alert.alert('Missing Information', 'Please enter the verification code.');
+      return;
+    }
+    try {
+      if (confirmation) {
+        await confirmPhoneCode(confirmation, verificationCode);
+        setConfirmation(null); // Clear confirmation state
+      }
+    } catch (error) {
+      Alert.alert('Sign In Failed', 'Invalid verification code. Please try again.');
+    }
+  };
+
   const goToSignUp = () => {
     router.push('/(auth)/signup');
   };
@@ -61,8 +81,6 @@ export default function LoginScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-
-        {/* Header - Calm and welcoming */}
         <View style={styles.header}>
           <Text style={styles.title}>Welcome Back</Text>
           <Text style={styles.subtitle}>
@@ -70,7 +88,6 @@ export default function LoginScreen() {
           </Text>
         </View>
 
-        {/* Auth Method Selection */}
         <View style={styles.methodSelector}>
           <TouchableOpacity
             style={[styles.methodButton, authMethod === 'email' && styles.methodButtonActive]}
@@ -100,9 +117,7 @@ export default function LoginScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Form Content */}
         <View style={styles.formContainer}>
-
           {/* Email Sign In Form */}
           {authMethod === 'email' && (
             <>
@@ -147,32 +162,64 @@ export default function LoginScreen() {
           {/* Phone Sign In Form */}
           {authMethod === 'phone' && (
             <>
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Phone Number</Text>
-                <TextInput
-                  style={styles.input}
-                  value={phoneNumber}
-                  onChangeText={setPhoneNumber}
-                  placeholder="+1 (555) 123-4567"
-                  keyboardType="phone-pad"
-                  autoCorrect={false}
-                  placeholderTextColor="#A0A0A0"
-                />
-              </View>
+              {!confirmation ? (
+                <>
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.label}>Phone Number</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={phoneNumber}
+                      onChangeText={setPhoneNumber}
+                      placeholder="+1 (555) 123-4567"
+                      keyboardType="phone-pad"
+                      autoCorrect={false}
+                      placeholderTextColor="#A0A0A0"
+                    />
+                  </View>
 
-              <TouchableOpacity
-                style={[styles.primaryButton, isLoading && styles.buttonDisabled]}
-                onPress={handlePhoneSignIn}
-                disabled={isLoading}
-              >
-                <Text style={styles.primaryButtonText}>
-                  {isLoading ? 'Sending Code...' : 'Send Verification Code'}
-                </Text>
-              </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.primaryButton, isLoading && styles.buttonDisabled]}
+                    onPress={handlePhoneSignIn}
+                    disabled={isLoading}
+                  >
+                    <Text style={styles.primaryButtonText}>
+                      {isLoading ? 'Sending Code...' : 'Send Verification Code'}
+                    </Text>
+                  </TouchableOpacity>
 
-              <Text style={styles.helpText}>
-                We'll send you a verification code to confirm your number
-              </Text>
+                  <Text style={styles.helpText}>
+                    We'll send you a verification code to confirm your number
+                  </Text>
+                </>
+              ) : (
+                <>
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.label}>Verification Code</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={verificationCode}
+                      onChangeText={setVerificationCode}
+                      placeholder="Enter the 6-digit code"
+                      keyboardType="numeric"
+                      placeholderTextColor="#A0A0A0"
+                    />
+                  </View>
+
+                  <TouchableOpacity
+                    style={[styles.primaryButton, isLoading && styles.buttonDisabled]}
+                    onPress={handlePhoneCodeConfirm}
+                    disabled={isLoading}
+                  >
+                    <Text style={styles.primaryButtonText}>
+                      {isLoading ? 'Confirming...' : 'Confirm Code'}
+                    </Text>
+                  </TouchableOpacity>
+
+                  <Text style={styles.helpText}>
+                    A code was sent to {phoneNumber}.
+                  </Text>
+                </>
+              )}
             </>
           )}
 
@@ -194,23 +241,20 @@ export default function LoginScreen() {
               </Text>
             </>
           )}
-
         </View>
 
-        {/* Sign Up Link - Subtle, not pushy */}
+        {/* Sign Up Link */}
         <View style={styles.footer}>
           <Text style={styles.footerText}>New to Family Loop?</Text>
           <TouchableOpacity onPress={goToSignUp}>
             <Text style={styles.linkText}>Create an account</Text>
           </TouchableOpacity>
         </View>
-
       </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
-// Anti-addictive design styles
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -288,28 +332,29 @@ const styles = StyleSheet.create({
     padding: 16,
     fontSize: 16,
     color: '#2C3E50',
-    // No aggressive focus colors
   },
   primaryButton: {
+    width: '100%',
     backgroundColor: '#3498DB',
     borderRadius: 12,
-    padding: 16,
+    padding: 18,
     alignItems: 'center',
-    marginTop: 8,
+    marginBottom: 20,
   },
   primaryButtonText: {
     color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: 18,
+    fontWeight: 'bold',
   },
   googleButton: {
+    width: '100%',
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: '#E0E0E0',
     borderRadius: 12,
-    padding: 16,
+    padding: 18,
     alignItems: 'center',
-    marginTop: 8,
+    marginBottom: 20,
   },
   googleButtonText: {
     color: '#2C3E50',
@@ -338,7 +383,6 @@ const styles = StyleSheet.create({
   linkText: {
     fontSize: 16,
     color: '#3498DB',
-    fontWeight: '500',
-    // No underline or aggressive styling
+    fontWeight: 'bold',
   },
 });

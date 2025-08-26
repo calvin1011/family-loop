@@ -38,7 +38,8 @@
           "resizeMode": "contain",
           "backgroundColor": "#ffffff"
         }
-      ]
+      ],
+      "@react-native-google-signin/google-signin"
     ],
     "experiments": {
       "typedRoutes": true
@@ -47,7 +48,8 @@
       "router": {},
       "eas": {
         "projectId": "9a0ce257-a635-4488-82c8-228326b52ba7"
-      }
+      },
+      "secrets": ["GOOGLE_WEB_CLIENT_ID", "GOOGLE_ANDROID_CLIENT_ID", "GOOGLE_IOS_CLIENT_ID"]
     }
   }
 }
