@@ -1,17 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useMemo, ReactNode } from 'react';
 import { Platform } from 'react-native';
-import {
-  getAuth,
-  onAuthStateChanged,
-  createUserWithEmailAndPassword,
-  signInWithEmailAndPassword,
-  signOut as firebaseSignOut,
-  updateProfile as firebaseUpdateProfile,
-  GoogleAuthProvider,
-  signInWithCredential,
-  FirebaseAuthTypes,
-  signInWithPhoneNumber,
-} from '@react-native-firebase/auth'
+import auth, { FirebaseAuthTypes } from '@react-native-firebase/auth';
 import { useIdTokenAuthRequest } from "expo-auth-session/providers/google";
 import * as WebBrowser from 'expo-web-browser';
 import Constants from 'expo-constants';
@@ -24,10 +13,9 @@ interface User {
   phoneNumber?: string | null;
   displayName?: string | null;
   photoURL?: string | null;
-  provider?: string | null; // How user signed in
+  provider?: string | null;
 }
 
-// Define what our (auth) context provides
 interface AuthContextType {
   user: User | null;
   isLoading: boolean;
@@ -41,23 +29,21 @@ interface AuthContextType {
   updateProfile: (updates: Partial<User>) => Promise<void>;
 }
 
-// Create the context
 const AuthContext = createContext<AuthContextType | null>(null);
 
 // Get environment variables from Expo config
 const extra = Constants.expoConfig?.extra;
-
-const authInstance = getAuth();
+console.log('Expo extra config:', JSON.stringify(extra, null, 2));
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Configuration for Google Authentication using the extra field
+  // Configuration for Google Authentication
   const googleAuthConfig = {
-    webClientId: extra?.GOOGLE_WEB_CLIENT_ID as string,
-    androidClientId: extra?.GOOGLE_ANDROID_CLIENT_ID as string,
-    iosClientId: extra?.GOOGLE_IOS_CLIENT_ID as string,
+    webClientId: extra?.secrets?.GOOGLE_WEB_CLIENT_ID as string,
+    androidClientId: extra?.secrets?.GOOGLE_ANDROID_CLIENT_ID as string,
+    iosClientId: extra?.secrets?.GOOGLE_IOS_CLIENT_ID as string,
     scopes: ["profile", "email"],
   };
 
@@ -71,9 +57,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     scopes: googleAuthConfig.scopes,
   });
 
-
   useEffect(() => {
-    const subscriber = onAuthStateChanged(authInstance, (firebaseUser) => {
+    const subscriber = auth().onAuthStateChanged((firebaseUser) => {
       if (firebaseUser) {
         const appUser: User = {
           uid: firebaseUser.uid,
@@ -95,11 +80,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     if (response?.type === 'success') {
       const { id_token } = response.params;
-      const credential = GoogleAuthProvider.credential(id_token);
+      const credential = auth.GoogleAuthProvider.credential(id_token);
       setIsLoading(true);
-      signInWithCredential(authInstance, credential)
+      auth()
+        .signInWithCredential(credential)
         .then(() => {
-
+          // Successfully signed in
         })
         .catch((error) => {
           console.error("Firebase credential error:", error);
@@ -108,7 +94,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [response]);
 
-  // Google Sign In trigger
   const signInWithGoogle = async () => {
     try {
       setIsLoading(true);
@@ -124,7 +109,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const signInWithPhone = async (phoneNumber: string): Promise<FirebaseAuthTypes.ConfirmationResult> => {
     setIsLoading(true);
     try {
-      const confirmation = await signInWithPhoneNumber(authInstance, phoneNumber);
+      const confirmation = await auth().signInWithPhoneNumber(phoneNumber);
       return confirmation;
     } catch (error) {
       console.error('Phone sign-in error:', error);
@@ -134,7 +119,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  // Confirm the phone verification code
   const confirmPhoneCode = async (confirmation: FirebaseAuthTypes.ConfirmationResult, code: string) => {
     setIsLoading(true);
     try {
@@ -150,7 +134,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const signInWithEmail = async (email: string, password: string) => {
     setIsLoading(true);
     try {
-      await signInWithEmailAndPassword(authInstance, email, password);
+      await auth().signInWithEmailAndPassword(email, password);
     } catch (error) {
       console.error('Email sign-in error:', error);
       throw error;
@@ -162,9 +146,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const signUp = async (email: string, password: string, displayName: string) => {
     setIsLoading(true);
     try {
-      const userCredential = await createUserWithEmailAndPassword(authInstance, email, password);
+      const userCredential = await auth().createUserWithEmailAndPassword(email, password);
       if (userCredential.user) {
-        await firebaseUpdateProfile(userCredential.user, { displayName: displayName });
+        await userCredential.user.updateProfile({ displayName: displayName });
       }
     } catch (error) {
       console.error('Sign-up error:', error);
@@ -175,29 +159,29 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const signOut = async (): Promise<void> => {
-  setIsLoading(true);
-  try {
-    await firebaseSignOut(authInstance);
-  } catch (error) {
-    console.error('Sign out error:', error);
-    throw error;
-  } finally {
-    setIsLoading(false);
-  }
-};
+    setIsLoading(true);
+    try {
+      await auth().signOut();
+    } catch (error) {
+      console.error('Sign out error:', error);
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const updateProfile = async (updates: Partial<User>) => {
-    if (!authInstance.currentUser) return;
+    const currentUser = auth().currentUser;
+    if (!currentUser) return;
+    
     try {
-      await firebaseUpdateProfile(authInstance.currentUser, {
+      await currentUser.updateProfile({
         displayName: updates.displayName,
         photoURL: updates.photoURL,
       });
     } catch (error) {
       console.error('Profile update error:', error);
       throw error;
-    } finally {
-      setIsLoading(false);
     }
   };
 
