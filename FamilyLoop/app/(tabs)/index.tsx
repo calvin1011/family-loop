@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, FlatList, Alert } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, FlatList, Alert, Modal, TextInput } from 'react-native';
 import * as Contacts from 'expo-contacts';
 import { NameDetector } from '../../utils/nameDetector';
 
@@ -9,6 +9,18 @@ interface Contact {
   phoneNumbers?: Array<{ number: string }>;
   relationship?: string;
   group?: string;
+  lastInteraction?: Date;
+  interactionType?: 'call' | 'text' | 'in-person' | 'video-call' | 'other';
+  interactionNote?: string;
+  daysSinceContact?: number;
+}
+
+interface Interaction {
+  id: string;
+  contactId: string;
+  type: 'call' | 'text' | 'in-person' | 'video-call' | 'other';
+  date: Date;
+  note?: string;
 }
 
 interface GroupedContacts {
@@ -19,10 +31,20 @@ const nameDetector = new NameDetector();
 
 export default function HomeScreen() {
   const [contacts, setContacts] = useState<Contact[]>([]);
+  const [interactions, setInteractions] = useState<Interaction[]>([]);
   const [groupedContacts, setGroupedContacts] = useState<GroupedContacts>({});
   const [loading, setLoading] = useState(false);
-  // Track how many contacts we started with vs filtered to
   const [totalContacts, setTotalContacts] = useState(0);
+
+  // Modal states
+  const [showInteractionModal, setShowInteractionModal] = useState(false);
+  const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
+  const [interactionType, setInteractionType] = useState<'call' | 'text' | 'in-person' | 'video-call' | 'other'>('call');
+  const [interactionNote, setInteractionNote] = useState('');
+
+  useEffect(() => {
+    updateContactsWithInteractions();
+  }, [interactions]);
 
   // Smart filtering function - keeps only relevant contacts
   const smartFilterContacts = (allContacts: any[]) => {
@@ -54,7 +76,6 @@ export default function HomeScreen() {
       }
 
       // Keep contacts that look like real people
-      // Real people usually have 2-3 word names and reasonable length
       const wordCount = name.split(' ').length;
       const isReasonableLength = name.length <= 40;
       const looksLikePerson = wordCount >= 2 && wordCount <= 4 && isReasonableLength;
@@ -81,17 +102,17 @@ export default function HomeScreen() {
 
         // Apply AI detection to filtered contacts
         const enhancedContacts = nameDetector.autoGroupContacts(filteredContacts);
-        setContacts(enhancedContacts);
 
-        // Group contacts by their detected category
-        const grouped = enhancedContacts.reduce((groups: GroupedContacts, contact: Contact) => {
-          const group = contact.group || 'Contacts';
-          if (!groups[group]) groups[group] = [];
-          groups[group].push(contact);
-          return groups;
-        }, {});
+        // Add interaction tracking properties
+        const trackedContacts = enhancedContacts.map((contact: Contact) => ({
+          ...contact,
+          lastInteraction: undefined,
+          interactionType: undefined,
+          interactionNote: undefined,
+          daysSinceContact: undefined
+        }));
 
-        setGroupedContacts(grouped);
+        setContacts(trackedContacts);
 
         // Show filtering results
         Alert.alert(
@@ -105,18 +126,144 @@ export default function HomeScreen() {
     setLoading(false);
   };
 
+  const updateContactsWithInteractions = () => {
+    if (contacts.length === 0) return;
+
+    const updatedContacts = contacts.map(contact => {
+      // Find most recent interaction for this contact
+      const contactInteractions = interactions
+        .filter(interaction => interaction.contactId === contact.id)
+        .sort((a, b) => b.date.getTime() - a.date.getTime());
+
+      const lastInteraction = contactInteractions[0];
+
+      if (lastInteraction) {
+        const daysSince = Math.floor((Date.now() - lastInteraction.date.getTime()) / (1000 * 60 * 60 * 24));
+
+        return {
+          ...contact,
+          lastInteraction: lastInteraction.date,
+          interactionType: lastInteraction.type,
+          interactionNote: lastInteraction.note,
+          daysSinceContact: daysSince
+        };
+      }
+
+      return contact;
+    });
+
+    setContacts(updatedContacts);
+
+    // Group contacts by their detected category
+    const grouped = updatedContacts.reduce((groups: GroupedContacts, contact: Contact) => {
+      const group = contact.group || 'Contacts';
+      if (!groups[group]) groups[group] = [];
+      groups[group].push(contact);
+      return groups;
+    }, {});
+
+    // Sort each group by days since contact (most urgent first)
+    Object.keys(grouped).forEach(groupName => {
+      grouped[groupName].sort((a, b) => {
+        const aDays = a.daysSinceContact ?? 999;
+        const bDays = b.daysSinceContact ?? 999;
+        return bDays - aDays; // Longest time since contact first
+      });
+    });
+
+    setGroupedContacts(grouped);
+  };
+
+  const addInteraction = () => {
+    if (!selectedContact) return;
+
+    const newInteraction: Interaction = {
+      id: Date.now().toString(),
+      contactId: selectedContact.id,
+      type: interactionType,
+      date: new Date(),
+      note: interactionNote.trim() || undefined
+    };
+
+    setInteractions(prev => [...prev, newInteraction]);
+
+    // Reset modal
+    setShowInteractionModal(false);
+    setSelectedContact(null);
+    setInteractionNote('');
+    setInteractionType('call');
+
+    Alert.alert('Interaction Added!', `Recorded ${interactionType} with ${selectedContact.name}`);
+  };
+
+  const getInteractionIcon = (type?: string) => {
+    const icons: { [key: string]: string } = {
+      'call': '📞',
+      'text': '💬',
+      'in-person': '👥',
+      'video-call': '📹',
+      'other': '💭'
+    };
+    return icons[type || ''] || '❓';
+  };
+
+  const getUrgencyColor = (daysSince?: number) => {
+    if (!daysSince) return '#95a5a6'; // No interaction yet
+    if (daysSince <= 3) return '#27ae60'; // Recent - green
+    if (daysSince <= 7) return '#f39c12'; // Week - orange
+    if (daysSince <= 30) return '#e67e22'; // Month - dark orange
+    return '#e74c3c'; // Long time - red
+  };
+
+  const getUrgencyText = (daysSince?: number, relationship?: string) => {
+    if (!daysSince) return 'No recent contact';
+
+    const familyThresholds = ['Mother', 'Father', 'Sister', 'Brother'].includes(relationship || '');
+
+    if (daysSince <= 1) return 'Today!';
+    if (daysSince <= 3) return `${daysSince} days ago`;
+    if (daysSince <= 7) return `${daysSince} days ago`;
+    if (daysSince <= 30) return `${daysSince} days ago`;
+    if (daysSince <= 365) return `${Math.floor(daysSince / 30)} months ago`;
+    return `${Math.floor(daysSince / 365)} years ago`;
+  };
+
   const ContactCard = ({ contact }: { contact: Contact }) => (
     <View style={styles.contactCard}>
       <View style={styles.contactInfo}>
-        <Text style={styles.contactName}>{contact.name || 'No Name'}</Text>
-        <Text style={styles.contactPhone}>
-          {contact.phoneNumbers?.[0]?.number || 'No Phone'}
-        </Text>
+        <View style={styles.contactHeader}>
+          <Text style={styles.contactName}>{contact.name || 'No Name'}</Text>
+          <View style={[styles.relationshipBadge, { backgroundColor: getGroupColor(contact.group || 'Contacts') }]}>
+            <Text style={styles.relationshipText}>{contact.relationship}</Text>
+          </View>
+        </View>
+
+        <View style={styles.interactionInfo}>
+          <View style={styles.lastContactRow}>
+            <Text style={styles.lastContactIcon}>
+              {getInteractionIcon(contact.interactionType)}
+            </Text>
+            <Text style={[styles.lastContactText, { color: getUrgencyColor(contact.daysSinceContact) }]}>
+              {getUrgencyText(contact.daysSinceContact, contact.relationship)}
+            </Text>
+          </View>
+          {contact.interactionNote && (
+            <Text style={styles.interactionNote} numberOfLines={1}>
+              "{contact.interactionNote}"
+            </Text>
+          )}
+        </View>
       </View>
-      {/* Color-coded badge showing what type of contact this is */}
-      <View style={[styles.relationshipBadge, { backgroundColor: getGroupColor(contact.group || 'Contacts') }]}>
-        <Text style={styles.relationshipText}>{contact.relationship}</Text>
-      </View>
+
+      <TouchableOpacity
+        style={styles.addInteractionButton}
+        onPress={() => {
+          setSelectedContact(contact);
+          setShowInteractionModal(true);
+        }}
+      >
+        <Text style={styles.addInteractionText}>+ Log Contact</Text>
+      </TouchableOpacity>
     </View>
   );
 
@@ -138,32 +285,100 @@ export default function HomeScreen() {
         <Text style={styles.groupTitle}>{groupName}</Text>
         <Text style={styles.groupCount}>{contacts.length} contacts</Text>
       </View>
-      {/* Show first 3 contacts in each group */}
-      {contacts.slice(0, 3).map(contact => (
+      {/* Show first 5 contacts in each group */}
+      {contacts.slice(0, 5).map(contact => (
         <ContactCard key={contact.id} contact={contact} />
       ))}
       {/* Show how many more contacts are in this group */}
-      {contacts.length > 3 && (
-        <Text style={styles.moreText}>+{contacts.length - 3} more...</Text>
+      {contacts.length > 5 && (
+        <Text style={styles.moreText}>+{contacts.length - 5} more...</Text>
       )}
     </View>
+  );
+
+  const InteractionModal = () => (
+    <Modal
+      visible={showInteractionModal}
+      animationType="slide"
+      presentationStyle="formSheet"
+    >
+      <View style={styles.modalContainer}>
+        <View style={styles.modalHeader}>
+          <Text style={styles.modalTitle}>Log Contact with {selectedContact?.name}</Text>
+          <TouchableOpacity onPress={() => setShowInteractionModal(false)}>
+            <Text style={styles.modalClose}>Cancel</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.modalContent}>
+          <Text style={styles.sectionTitle}>How did you connect?</Text>
+
+          <View style={styles.interactionTypes}>
+            {[
+              { type: 'call' as const, label: 'Phone Call', icon: '📞' },
+              { type: 'text' as const, label: 'Text/Message', icon: '💬' },
+              { type: 'in-person' as const, label: 'In Person', icon: '👥' },
+              { type: 'video-call' as const, label: 'Video Call', icon: '📹' },
+              { type: 'other' as const, label: 'Other', icon: '💭' }
+            ].map(({ type, label, icon }) => (
+              <TouchableOpacity
+                key={type}
+                style={[
+                  styles.interactionTypeButton,
+                  interactionType === type && styles.interactionTypeButtonActive
+                ]}
+                onPress={() => setInteractionType(type)}
+              >
+                <Text style={styles.interactionTypeIcon}>{icon}</Text>
+                <Text style={[
+                  styles.interactionTypeText,
+                  interactionType === type && styles.interactionTypeTextActive
+                ]}>
+                  {label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <View style={styles.noteSection}>
+            <Text style={styles.noteLabel}>Add a note (optional)</Text>
+            <TextInput
+              style={styles.noteInput}
+              value={interactionNote}
+              onChangeText={setInteractionNote}
+              placeholder="e.g., Talked about vacation plans"
+              placeholderTextColor="#95a5a6"
+              multiline
+              maxLength={100}
+            />
+          </View>
+
+          <TouchableOpacity
+            style={styles.saveButton}
+            onPress={addInteraction}
+          >
+            <Text style={styles.saveButtonText}>Log This Contact</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
   );
 
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Family Loop</Text>
-      <Text style={styles.subtitle}>Smart AI Contact Filtering</Text>
+      <Text style={styles.subtitle}>Communication Intelligence</Text>
 
       {/* Show filtering stats */}
       {totalContacts > 0 && (
         <Text style={styles.statsText}>
-          Showing {contacts.length} of {totalContacts} total contacts
+          Tracking {contacts.length} of {totalContacts} contacts
         </Text>
       )}
 
       <TouchableOpacity style={styles.button} onPress={loadContacts}>
         <Text style={styles.buttonText}>
-          {loading ? 'Smart Filtering Contacts...' : 'Load & Filter My Contacts'}
+          {loading ? 'Loading Contacts...' : 'Load & Start Tracking'}
         </Text>
       </TouchableOpacity>
 
@@ -179,6 +394,8 @@ export default function HomeScreen() {
           showsVerticalScrollIndicator={false}
         />
       )}
+
+      <InteractionModal />
     </View>
   );
 }
@@ -203,7 +420,6 @@ const styles = StyleSheet.create({
     color: '#7f8c8d',
     marginBottom: 20,
   },
-
   statsText: {
     fontSize: 14,
     textAlign: 'center',
@@ -256,22 +472,24 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 8,
+    paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#ecf0f1',
   },
   contactInfo: {
     flex: 1,
   },
+  contactHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
   contactName: {
     fontSize: 16,
     fontWeight: '500',
     color: '#2c3e50',
-  },
-  contactPhone: {
-    fontSize: 14,
-    color: '#7f8c8d',
-    marginTop: 2,
+    flex: 1,
   },
   relationshipBadge: {
     paddingHorizontal: 8,
@@ -283,10 +501,136 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
   },
+  interactionInfo: {
+    marginTop: 4,
+  },
+  lastContactRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 2,
+  },
+  lastContactIcon: {
+    fontSize: 14,
+    marginRight: 6,
+  },
+  lastContactText: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  interactionNote: {
+    fontSize: 12,
+    color: '#7f8c8d',
+    fontStyle: 'italic',
+    marginTop: 2,
+  },
+  addInteractionButton: {
+    backgroundColor: '#27ae60',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 6,
+  },
+  addInteractionText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: '600',
+  },
   moreText: {
     textAlign: 'center',
     color: '#7f8c8d',
     fontStyle: 'italic',
     marginTop: 8,
+  },
+  // Modal Styles
+  modalContainer: {
+    flex: 1,
+    backgroundColor: 'white',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    paddingTop: 60,
+    borderBottomWidth: 1,
+    borderBottomColor: '#ecf0f1',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#2c3e50',
+    flex: 1,
+  },
+  modalClose: {
+    fontSize: 16,
+    color: '#e74c3c',
+  },
+  modalContent: {
+    padding: 20,
+    flex: 1,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#2c3e50',
+    marginBottom: 12,
+  },
+  interactionTypes: {
+    marginBottom: 24,
+  },
+  interactionTypeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    backgroundColor: '#f8f9fa',
+    borderRadius: 8,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  interactionTypeButtonActive: {
+    backgroundColor: '#e8f4fd',
+    borderColor: '#3498db',
+  },
+  interactionTypeIcon: {
+    fontSize: 18,
+    marginRight: 12,
+  },
+  interactionTypeText: {
+    fontSize: 16,
+    color: '#2c3e50',
+  },
+  interactionTypeTextActive: {
+    color: '#3498db',
+    fontWeight: '600',
+  },
+  noteSection: {
+    marginBottom: 32,
+  },
+  noteLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#34495e',
+    marginBottom: 8,
+  },
+  noteInput: {
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    backgroundColor: '#f8f9fa',
+    minHeight: 60,
+    textAlignVertical: 'top',
+  },
+  saveButton: {
+    backgroundColor: '#27ae60',
+    padding: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  saveButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });
