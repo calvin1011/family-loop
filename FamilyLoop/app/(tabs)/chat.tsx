@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Linking, Platform } from 'react-native';
 import {
   View,
   Text,
@@ -163,34 +164,75 @@ export default function ChatScreen() {
     }));
   };
 
-  const sendMessage = () => {
-    if (!messageText.trim() || !selectedContact) return;
+  const sendMessage = async () => {
+  if (!messageText.trim() || !selectedContact) return;
 
-    const newMessage: ChatMessage = {
-      id: Date.now().toString(),
-      contactId: selectedContact.id,
-      message: messageText.trim(),
-      timestamp: new Date(),
-      isFromMe: true
-    };
+  const newMessage: ChatMessage = {
+    id: Date.now().toString(),
+    contactId: selectedContact.id,
+    message: messageText.trim(),
+    timestamp: new Date(),
+    isFromMe: true
+  };
 
-    setChats(prev => [...prev, newMessage]);
+  // Add to local chat immediately (for UI feedback)
+  setChats(prev => [...prev, newMessage]);
+
+  // Update contact's last message
+  setContacts(prev => prev.map(contact =>
+    contact.id === selectedContact.id
+      ? {
+          ...contact,
+          lastMessage: newMessage.message,
+          lastMessageTime: newMessage.timestamp
+        }
+      : contact
+  ));
+
+  // Get phone number
+  const phoneNumber = selectedContact.phoneNumbers?.[0]?.number;
+  if (!phoneNumber) {
+    Alert.alert('Error', 'No phone number available for this contact');
+    return;
+  }
+
+  try {
+    // Send real SMS using native SMS app
+    await sendRealSMS(phoneNumber, messageText.trim());
+
+    // Clear input after sending
     setMessageText('');
 
-    // Update contact's last message
-    setContacts(prev => prev.map(contact =>
-      contact.id === selectedContact.id
-        ? {
-            ...contact,
-            lastMessage: newMessage.message,
-            lastMessageTime: newMessage.timestamp
-          }
-        : contact
-    ));
+    // Show success feedback
+    Alert.alert('Message Sent!', `Sent via your default messaging app to ${selectedContact.name}`);
 
-    // In a real app, you'd send this to your messaging service here
-    console.log('Message sent:', newMessage);
-  };
+  } catch (error) {
+    Alert.alert('Error', 'Could not open messaging app. Please check if SMS is available on this device.');
+    console.error('SMS Error:', error);
+  }
+};
+
+// Function to send real SMS
+const sendRealSMS = async (phoneNumber: string, message: string) => {
+  // Clean phone number (remove spaces, dashes, parentheses)
+  const cleanNumber = phoneNumber.replace(/[^\d+]/g, '');
+
+  // Create SMS URL
+  const smsUrl = Platform.select({
+    ios: `sms:${cleanNumber}&body=${encodeURIComponent(message)}`,
+    android: `sms:${cleanNumber}?body=${encodeURIComponent(message)}`,
+  });
+
+  if (smsUrl) {
+    // Check if SMS is supported
+    const canOpen = await Linking.canOpenURL(smsUrl);
+    if (canOpen) {
+      await Linking.openURL(smsUrl);
+    } else {
+      throw new Error('SMS not supported on this device');
+    }
+  }
+};
 
   const startNewChat = (contact: Contact) => {
     setSelectedContact(contact);
