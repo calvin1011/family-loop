@@ -11,7 +11,7 @@ import {
   Pressable
 } from 'react-native';
 import * as Contacts from 'expo-contacts';
-import { NameDetector } from '@/utils/nameDetector.js';
+import { NameDetector } from '../../utils/nameDetector';
 import { useAuth } from '@/contexts/AuthContext';
 
 interface Contact {
@@ -42,6 +42,9 @@ export default function ChatScreen() {
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
   const [messageText, setMessageText] = useState('');
   const [showContactPicker, setShowContactPicker] = useState(false);
+  const [showNewContactForm, setShowNewContactForm] = useState(false);
+  const [newContactName, setNewContactName] = useState('');
+  const [newContactPhone, setNewContactPhone] = useState('');
   const [loading, setLoading] = useState(false);
 
   // Load contacts on mount
@@ -194,6 +197,36 @@ export default function ChatScreen() {
     setShowContactPicker(false);
   };
 
+  const createNewContact = () => {
+    if (!newContactName.trim() || !newContactPhone.trim()) {
+      Alert.alert('Missing Information', 'Please enter both name and phone number.');
+      return;
+    }
+
+    const newContact: Contact = {
+      id: `manual-${Date.now()}`,
+      name: newContactName.trim(),
+      phoneNumbers: [{ number: newContactPhone.trim() }],
+      relationship: nameDetector.detectRelationship(newContactName.trim()),
+      group: 'Contacts',
+      lastMessage: undefined,
+      lastMessageTime: undefined,
+      unreadCount: 0
+    };
+
+    // Add to contacts list
+    setContacts(prev => [newContact, ...prev]);
+
+    // Start chat with new contact
+    setSelectedContact(newContact);
+
+    // Reset form
+    setNewContactName('');
+    setNewContactPhone('');
+    setShowNewContactForm(false);
+    setShowContactPicker(false);
+  };
+
   const getContactChats = () => {
     if (!selectedContact) return [];
     return chats
@@ -292,28 +325,109 @@ export default function ChatScreen() {
       <View style={styles.modalContainer}>
         <View style={styles.modalHeader}>
           <Text style={styles.modalTitle}>Start New Chat</Text>
-          <TouchableOpacity onPress={() => setShowContactPicker(false)}>
+          <TouchableOpacity onPress={() => {
+            setShowContactPicker(false);
+            setShowNewContactForm(false);
+            setNewContactName('');
+            setNewContactPhone('');
+          }}>
             <Text style={styles.modalClose}>Cancel</Text>
           </TouchableOpacity>
         </View>
-        <FlatList
-          data={contacts}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) => (
-            <TouchableOpacity
-              style={styles.contactPickerItem}
-              onPress={() => startNewChat(item)}
-            >
-              <View style={[styles.avatar, { backgroundColor: getRelationshipColor(item.relationship) }]}>
-                <Text style={styles.avatarText}>{item.name?.charAt(0) || '?'}</Text>
-              </View>
-              <View>
-                <Text style={styles.contactName}>{item.name || 'Unknown'}</Text>
-                <Text style={styles.contactRelationship}>{item.relationship}</Text>
-              </View>
-            </TouchableOpacity>
-          )}
-        />
+
+        {showNewContactForm ? (
+          // New Contact Form
+          <View style={styles.newContactForm}>
+            <Text style={styles.formTitle}>Add New Contact</Text>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Name</Text>
+              <TextInput
+                style={styles.textInput}
+                value={newContactName}
+                onChangeText={setNewContactName}
+                placeholder="Enter contact name"
+                placeholderTextColor="#95a5a6"
+              />
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Phone Number</Text>
+              <TextInput
+                style={styles.textInput}
+                value={newContactPhone}
+                onChangeText={setNewContactPhone}
+                placeholder="+1 (555) 123-4567"
+                placeholderTextColor="#95a5a6"
+                keyboardType="phone-pad"
+              />
+            </View>
+
+            <View style={styles.formButtons}>
+              <TouchableOpacity
+                style={styles.cancelButton}
+                onPress={() => {
+                  setShowNewContactForm(false);
+                  setNewContactName('');
+                  setNewContactPhone('');
+                }}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.createButton, (!newContactName.trim() || !newContactPhone.trim()) && styles.createButtonDisabled]}
+                onPress={createNewContact}
+                disabled={!newContactName.trim() || !newContactPhone.trim()}
+              >
+                <Text style={styles.createButtonText}>Create & Chat</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        ) : (
+          // Contact List
+          <FlatList
+            data={[
+              // Add "New Contact" option at the top
+              { id: 'new-contact-option', name: 'New Contact', isNewContactOption: true },
+              ...contacts
+            ]}
+            keyExtractor={(item) => item.id}
+            renderItem={({ item }) => {
+              if ('isNewContactOption' in item) {
+                return (
+                  <TouchableOpacity
+                    style={styles.newContactOption}
+                    onPress={() => setShowNewContactForm(true)}
+                  >
+                    <View style={[styles.avatar, { backgroundColor: '#3498db' }]}>
+                      <Text style={styles.avatarText}>+</Text>
+                    </View>
+                    <View>
+                      <Text style={styles.newContactOptionText}>Add New Contact</Text>
+                      <Text style={styles.newContactOptionSubtext}>Enter phone number manually</Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              }
+
+              return (
+                <TouchableOpacity
+                  style={styles.contactPickerItem}
+                  onPress={() => startNewChat(item)}
+                >
+                  <View style={[styles.avatar, { backgroundColor: getRelationshipColor(item.relationship) }]}>
+                    <Text style={styles.avatarText}>{item.name?.charAt(0) || '?'}</Text>
+                  </View>
+                  <View>
+                    <Text style={styles.contactName}>{item.name || 'Unknown'}</Text>
+                    <Text style={styles.contactRelationship}>{item.relationship}</Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            }}
+          />
+        )}
       </View>
     </Modal>
   );
@@ -643,6 +757,83 @@ const styles = StyleSheet.create({
     borderBottomColor: '#ecf0f1',
   },
   contactRelationship: {
+    fontSize: 14,
+    color: '#7f8c8d',
+  },
+  // New Contact Form Styles
+  newContactForm: {
+    padding: 20,
+    flex: 1,
+  },
+  formTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#2c3e50',
+    marginBottom: 20,
+  },
+  inputGroup: {
+    marginBottom: 16,
+  },
+  inputLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#34495e',
+    marginBottom: 6,
+  },
+  textInput: {
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    backgroundColor: '#f8f9fa',
+  },
+  formButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 20,
+  },
+  cancelButton: {
+    flex: 1,
+    backgroundColor: '#ecf0f1',
+    padding: 12,
+    borderRadius: 8,
+    marginRight: 8,
+    alignItems: 'center',
+  },
+  cancelButtonText: {
+    color: '#7f8c8d',
+    fontWeight: '600',
+  },
+  createButton: {
+    flex: 1,
+    backgroundColor: '#3498db',
+    padding: 12,
+    borderRadius: 8,
+    marginLeft: 8,
+    alignItems: 'center',
+  },
+  createButtonDisabled: {
+    backgroundColor: '#bdc3c7',
+  },
+  createButtonText: {
+    color: 'white',
+    fontWeight: '600',
+  },
+  newContactOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#ecf0f1',
+    backgroundColor: '#f8f9fa',
+  },
+  newContactOptionText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#3498db',
+  },
+  newContactOptionSubtext: {
     fontSize: 14,
     color: '#7f8c8d',
   },
