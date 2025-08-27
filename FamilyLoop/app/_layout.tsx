@@ -13,13 +13,14 @@ import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 function RootLayoutNav() {
   const { isAuthenticated, isLoading } = useAuth();
 
+  // Handle navigation when auth state changes
   useEffect(() => {
     if (!isLoading) {
       if (!isAuthenticated) {
-        // User not logged in - redirect to onboarding first
+        console.log('User not authenticated, navigating to onboarding');
         router.replace('/(auth)/onboarding');
       } else {
-        // User is logged in - redirect to main app
+        console.log('User authenticated, navigating to main app');
         router.replace('/(tabs)');
       }
     }
@@ -35,8 +36,8 @@ function RootLayoutNav() {
         alignItems: 'center'
       }}>
         <Text style={{
-          fontSize: 24,
-          fontWeight: 'bold',
+          fontSize: 32,
+          fontWeight: '800',
           color: '#2C3E50',
           marginBottom: 8
         }}>
@@ -44,23 +45,30 @@ function RootLayoutNav() {
         </Text>
         <Text style={{
           fontSize: 16,
-          color: '#7F8C8D'
+          color: '#7F8C8D',
+          marginBottom: 20
         }}>
-          Loading...
+          Checking authentication...
         </Text>
+
+        {/* Loading indicator */}
+        <View style={{
+          width: 40,
+          height: 40,
+          borderRadius: 20,
+          borderWidth: 3,
+          borderColor: '#E8F4FD',
+          borderTopColor: '#3498DB',
+        }} />
       </View>
     );
   }
 
+  // Show all possible routes - navigation will handle which one to show
   return (
     <Stack screenOptions={{ headerShown: false }}>
-      {/* Authentication screens - shown when not logged in */}
-      <Stack.Screen name="(auth)" />
-
-      {/* Main app screens - shown when logged in */}
-      <Stack.Screen name="(tabs)" />
-
-      {/* Error handling */}
+      <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="+not-found" />
     </Stack>
   );
@@ -82,7 +90,8 @@ export default function RootLayout() {
         alignItems: 'center'
       }}>
         <Text style={{
-          fontSize: 20,
+          fontSize: 24,
+          fontWeight: 'bold',
           color: '#2C3E50'
         }}>
           Loading fonts...

@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useMemo, ReactNode } from 'react';
 import { Platform } from 'react-native';
 import { initializeApp, getApp, getApps } from 'firebase/app';
-import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut as firebaseSignOut, updateProfile as firebaseUpdateProfile, GoogleAuthProvider, signInWithCredential, User as FirebaseUser, Auth } from 'firebase/auth';
+import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut as firebaseSignOut, updateProfile as firebaseUpdateProfile, GoogleAuthProvider, signInWithCredential, User as FirebaseUser, Auth, setPersistence, browserSessionPersistence, browserLocalPersistence } from 'firebase/auth';
 import { useIdTokenAuthRequest } from "expo-auth-session/providers/google";
 import * as WebBrowser from 'expo-web-browser';
 import Constants from 'expo-constants';
@@ -21,7 +21,7 @@ const firebaseConfig = {
 // Initialize Firebase
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
-// Initialize Firebase Auth (simple approach without persistence for now)
+// Initialize Firebase Auth with persistence
 const auth = getAuth(app);
 
 interface User {
@@ -72,8 +72,24 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     scopes: googleAuthConfig.scopes,
   });
 
+  // Set up Firebase Auth persistence
+  useEffect(() => {
+    if (Platform.OS === 'web') {
+      setPersistence(auth, browserLocalPersistence)
+        .then(() => {
+          console.log('Firebase persistence set to local storage');
+        })
+        .catch((error) => {
+          console.error('Failed to set Firebase persistence:', error);
+        });
+    }
+  }, []);
+
+  // Firebase auth state listener - handles automatic persistence
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+      console.log('Auth state changed:', firebaseUser ? 'User logged in' : 'User logged out');
+
       if (firebaseUser) {
         const appUser: User = {
           uid: firebaseUser.uid,
@@ -83,14 +99,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           provider: firebaseUser.providerData?.[0]?.providerId
         };
         setUser(appUser);
+        console.log('User restored:', appUser.displayName || appUser.email);
       } else {
         setUser(null);
       }
+
       setIsLoading(false);
     });
+
     return unsubscribe;
   }, []);
 
+  // Google sign in response handler
   useEffect(() => {
     if (response?.type === 'success') {
       const { id_token } = response.params;
@@ -141,6 +161,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setIsLoading(true);
     try {
       await signInWithEmailAndPassword(auth, email, password);
+      // Firebase automatically persists the session
     } finally {
       setIsLoading(false);
     }
@@ -153,6 +174,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       if (userCredential.user) {
         await firebaseUpdateProfile(userCredential.user, { displayName: displayName });
       }
+      // Firebase automatically persists the session
     } finally {
       setIsLoading(false);
     }
@@ -162,6 +184,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setIsLoading(true);
     try {
       await firebaseSignOut(auth);
+      // Firebase automatically clears the persisted session
+      console.log('User signed out');
     } finally {
       setIsLoading(false);
     }
@@ -170,10 +194,22 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const updateProfile = async (updates: Partial<User>) => {
     const currentUser = auth.currentUser;
     if (!currentUser) return;
-    await firebaseUpdateProfile(currentUser, {
-      displayName: updates.displayName,
-      photoURL: updates.photoURL,
-    });
+
+    setIsLoading(true);
+    try {
+      await firebaseUpdateProfile(currentUser, {
+        displayName: updates.displayName,
+        photoURL: updates.photoURL,
+      });
+
+      // Update local user state
+      if (user) {
+        const updatedUser = { ...user, ...updates };
+        setUser(updatedUser);
+      }
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const isAuthenticated = user !== null;

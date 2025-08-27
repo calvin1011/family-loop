@@ -1,4 +1,3 @@
-// FamilyLoop/app/(tabs)/index.tsx - Updated Home Screen with Interaction Tracking
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, FlatList, Alert, Modal, TextInput } from 'react-native';
 import * as Contacts from 'expo-contacts';
