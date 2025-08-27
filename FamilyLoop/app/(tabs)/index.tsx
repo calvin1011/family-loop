@@ -1,3 +1,4 @@
+// FamilyLoop/app/(tabs)/index.tsx - Updated Home Screen with Interaction Tracking
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, FlatList, Alert, Modal, TextInput } from 'react-native';
 import * as Contacts from 'expo-contacts';
@@ -43,8 +44,10 @@ export default function HomeScreen() {
   const [interactionNote, setInteractionNote] = useState('');
 
   useEffect(() => {
-    updateContactsWithInteractions();
-  }, [interactions]);
+    if (contacts.length > 0) {
+      updateContactsWithInteractions();
+    }
+  }, [interactions, contacts]);
 
   // Smart filtering function - keeps only relevant contacts
   const smartFilterContacts = (allContacts: any[]) => {
@@ -114,6 +117,9 @@ export default function HomeScreen() {
 
         setContacts(trackedContacts);
 
+        // Immediately update grouping after setting contacts
+        updateContactsWithInteractions();
+
         // Show filtering results
         Alert.alert(
           'Smart Filtering Complete!',
@@ -151,8 +157,6 @@ export default function HomeScreen() {
 
       return contact;
     });
-
-    setContacts(updatedContacts);
 
     // Group contacts by their detected category
     const grouped = updatedContacts.reduce((groups: GroupedContacts, contact: Contact) => {
