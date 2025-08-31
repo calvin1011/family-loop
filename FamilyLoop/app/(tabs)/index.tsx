@@ -33,8 +33,10 @@ export default function HomeScreen() {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [interactions, setInteractions] = useState<Interaction[]>([]);
   const [groupedContacts, setGroupedContacts] = useState<GroupedContacts>({});
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true); // Start as loading
   const [totalContacts, setTotalContacts] = useState(0);
+  const [hasPermission, setHasPermission] = useState<boolean | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // Modal states
   const [showInteractionModal, setShowInteractionModal] = useState(false);
@@ -42,6 +44,12 @@ export default function HomeScreen() {
   const [interactionType, setInteractionType] = useState<'call' | 'text' | 'in-person' | 'video-call' | 'other'>('call');
   const [interactionNote, setInteractionNote] = useState('');
 
+  // Auto-load contacts when component mounts
+  useEffect(() => {
+    loadContacts();
+  }, []);
+
+  // Update contacts when interactions change
   useEffect(() => {
     if (contacts.length > 0) {
       updateContactsWithInteractions();
@@ -83,13 +91,17 @@ export default function HomeScreen() {
       const looksLikePerson = wordCount >= 2 && wordCount <= 4 && isReasonableLength;
 
       return looksLikePerson;
-    }).slice(0, 300); // Limit to top 300 to keep app fast
+    }).slice(0, 300); // Limit contacts to top 300 to keep app fast
   };
 
   const loadContacts = async () => {
     setLoading(true);
+    setLoadError(null);
+
     try {
       const { status } = await Contacts.requestPermissionsAsync();
+      setHasPermission(status === 'granted');
+
       if (status === 'granted') {
         // Get all contacts from phone
         const { data } = await Contacts.getContactsAsync({
@@ -118,15 +130,12 @@ export default function HomeScreen() {
 
         // Immediately update grouping after setting contacts
         updateContactsWithInteractions();
-
-        // Show filtering results
-        Alert.alert(
-          'Smart Filtering Complete!',
-          `Filtered ${data.length} total contacts down to ${filteredContacts.length} relevant contacts.\n\nFamily members are always included!`
-        );
+      } else {
+        setLoadError('Contact permission is required to track your family and friends.');
       }
     } catch (error) {
-      Alert.alert('Error', 'Failed to load contacts');
+      console.error('Failed to load contacts:', error);
+      setLoadError('Failed to load contacts. Please try again.');
     }
     setLoading(false);
   };
@@ -220,8 +229,6 @@ export default function HomeScreen() {
 
   const getUrgencyText = (daysSince?: number, relationship?: string) => {
     if (!daysSince) return 'No recent contact';
-
-    const familyThresholds = ['Mother', 'Father', 'Sister', 'Brother'].includes(relationship || '');
 
     if (daysSince <= 1) return 'Today!';
     if (daysSince <= 3) return `${daysSince} days ago`;
@@ -367,26 +374,84 @@ export default function HomeScreen() {
     </Modal>
   );
 
+  // Loading state
+  if (loading) {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.title}>Family Loop</Text>
+        <Text style={styles.subtitle}>Communication Intelligence</Text>
+
+        <View style={styles.loadingContainer}>
+          <Text style={styles.loadingText}>Loading your contacts...</Text>
+          <Text style={styles.loadingSubtext}>Filtering and organizing your family & friends</Text>
+        </View>
+      </View>
+    );
+  }
+
+  // Permission denied state
+  if (hasPermission === false) {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.title}>Family Loop</Text>
+        <Text style={styles.subtitle}>Communication Intelligence</Text>
+
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorTitle}>Contact Permission Required</Text>
+          <Text style={styles.errorText}>
+            To help you track communication with family and friends, we need access to your contacts.
+          </Text>
+          <TouchableOpacity style={styles.button} onPress={loadContacts}>
+            <Text style={styles.buttonText}>Grant Permission</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
+  // Error state
+  if (loadError) {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.title}>Family Loop</Text>
+        <Text style={styles.subtitle}>Communication Intelligence</Text>
+
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorTitle}>Unable to Load Contacts</Text>
+          <Text style={styles.errorText}>{loadError}</Text>
+          <TouchableOpacity style={styles.button} onPress={loadContacts}>
+            <Text style={styles.buttonText}>Try Again</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
+  // Main content - contacts loaded successfully
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Family Loop</Text>
-      <Text style={styles.subtitle}>Communication Intelligence</Text>
+      <View style={styles.header}>
+        <Text style={styles.title}>Family Loop</Text>
+        <Text style={styles.subtitle}>Communication Intelligence</Text>
 
-      {/* Show filtering stats */}
-      {totalContacts > 0 && (
-        <Text style={styles.statsText}>
-          Tracking {contacts.length} of {totalContacts} contacts
-        </Text>
-      )}
+        {/* Show filtering stats */}
+        {totalContacts > 0 && (
+          <Text style={styles.statsText}>
+            Tracking {contacts.length} of {totalContacts} contacts
+          </Text>
+        )}
+      </View>
 
-      <TouchableOpacity style={styles.button} onPress={loadContacts}>
-        <Text style={styles.buttonText}>
-          {loading ? 'Loading Contacts...' : 'Load & Start Tracking'}
-        </Text>
+      {/* Optional manual refresh button */}
+      <TouchableOpacity
+        style={styles.refreshButton}
+        onPress={loadContacts}
+      >
+        <Text style={styles.refreshText}>↻ Refresh Contacts</Text>
       </TouchableOpacity>
 
       {/* Show grouped contacts */}
-      {Object.keys(groupedContacts).length > 0 && (
+      {Object.keys(groupedContacts).length > 0 ? (
         <FlatList
           data={Object.entries(groupedContacts)}
           keyExtractor={([groupName]) => groupName}
@@ -396,6 +461,13 @@ export default function HomeScreen() {
           style={styles.groupsList}
           showsVerticalScrollIndicator={false}
         />
+      ) : (
+        <View style={styles.emptyState}>
+          <Text style={styles.emptyTitle}>No Contacts Found</Text>
+          <Text style={styles.emptyText}>
+            Make sure you have contacts saved on your device to start tracking communication.
+          </Text>
+        </View>
       )}
 
       <InteractionModal />
@@ -409,6 +481,9 @@ const styles = StyleSheet.create({
     padding: 20,
     backgroundColor: '#f8f9fa',
   },
+  header: {
+    marginBottom: 20,
+  },
   title: {
     fontSize: 28,
     fontWeight: 'bold',
@@ -421,20 +496,88 @@ const styles = StyleSheet.create({
     fontSize: 16,
     textAlign: 'center',
     color: '#7f8c8d',
-    marginBottom: 20,
+    marginBottom: 10,
   },
   statsText: {
     fontSize: 14,
     textAlign: 'center',
     color: '#3498db',
-    marginBottom: 20,
     fontWeight: '500',
+  },
+  refreshButton: {
+    alignSelf: 'flex-end',
+    backgroundColor: '#ecf0f1',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    marginBottom: 15,
+  },
+  refreshText: {
+    color: '#7f8c8d',
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 40,
+  },
+  loadingText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#2c3e50',
+    marginBottom: 8,
+  },
+  loadingSubtext: {
+    fontSize: 14,
+    color: '#7f8c8d',
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 40,
+  },
+  errorTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#e74c3c',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  errorText: {
+    fontSize: 16,
+    color: '#7f8c8d',
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 24,
+  },
+  emptyState: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 40,
+  },
+  emptyTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#2c3e50',
+    marginBottom: 12,
+  },
+  emptyText: {
+    fontSize: 16,
+    color: '#7f8c8d',
+    textAlign: 'center',
+    lineHeight: 22,
   },
   button: {
     backgroundColor: '#3498db',
     padding: 15,
     borderRadius: 12,
-    marginBottom: 20,
+    minWidth: 200,
   },
   buttonText: {
     color: 'white',
