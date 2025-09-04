@@ -110,7 +110,7 @@ export function CommunicationGoals({ contacts, interactions, onGoalCreated }: Pr
       }
 
       return false;
-    }).slice(0, 10); // Limit contact show results
+    }).slice(0, 10); // Limit to 10 results
 
     setFilteredContacts(filtered);
   }, [searchQuery, contacts]);
@@ -774,6 +774,20 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     color: '#7f8c8d',
     fontSize: 14,
+  },
+  loadingText: {
+    textAlign: 'center',
+    color: '#3498db',
+    fontSize: 14,
+    marginBottom: 12,
+    fontStyle: 'italic',
+  },
+  contactCountText: {
+    textAlign: 'center',
+    color: '#95a5a6',
+    fontSize: 12,
+    marginBottom: 12,
+    fontStyle: 'italic',
   },
   optionsGrid: {
     flexDirection: 'row',
