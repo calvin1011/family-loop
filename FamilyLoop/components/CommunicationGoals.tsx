@@ -20,6 +20,7 @@ interface Contact {
   name?: string;
   relationship?: string;
   group?: string;
+  phoneNumbers?: Array<{ number: string }>;
 }
 
 interface CommunicationGoal {
@@ -70,6 +71,8 @@ export function CommunicationGoals({ contacts, interactions, onGoalCreated }: Pr
   const [selectedMethod, setSelectedMethod] = useState<string>('any');
   const [customNote, setCustomNote] = useState('');
   const [loading, setLoading] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filteredContacts, setFilteredContacts] = useState<Contact[]>([]);
 
   // Load goals from storage on component mount
   useEffect(() => {
@@ -80,6 +83,37 @@ export function CommunicationGoals({ contacts, interactions, onGoalCreated }: Pr
   useEffect(() => {
     updateGoalsProgress();
   }, [interactions, goals]);
+
+  // Filter contacts based on search query
+  useEffect(() => {
+    if (!searchQuery.trim()) {
+      setFilteredContacts([]);
+      return;
+    }
+
+    const query = searchQuery.toLowerCase();
+    const filtered = contacts.filter(contact => {
+      const name = (contact.name || '').toLowerCase();
+      const relationship = (contact.relationship || '').toLowerCase();
+
+      // Search by name
+      if (name.includes(query)) return true;
+
+      // Search by relationship
+      if (relationship.includes(query)) return true;
+
+      // Search by phone number if contact has one
+      if (contact.phoneNumbers && contact.phoneNumbers.length > 0) {
+        return contact.phoneNumbers.some(phone =>
+          phone.number.replace(/[^\d]/g, '').includes(query.replace(/[^\d]/g, ''))
+        );
+      }
+
+      return false;
+    }).slice(0, 10); // Limit contact show results
+
+    setFilteredContacts(filtered);
+  }, [searchQuery, contacts]);
 
   const loadGoals = async () => {
     try {
@@ -164,6 +198,7 @@ export function CommunicationGoals({ contacts, interactions, onGoalCreated }: Pr
     setSelectedFrequency('weekly');
     setSelectedMethod('any');
     setCustomNote('');
+    setSearchQuery('');
     setShowCreateModal(false);
 
     Alert.alert('Goal Created!', `You'll be reminded to contact ${newGoal.contactName} ${frequency.label.toLowerCase()}`);
@@ -349,33 +384,54 @@ export function CommunicationGoals({ contacts, interactions, onGoalCreated }: Pr
           >
             {/* Contact Selection */}
             <Text style={styles.sectionTitle}>Choose Contact</Text>
-            {contacts.length > 0 ? (
-              <View style={styles.contactListContainer}>
-                {contacts.slice(0, 8).map((contact) => (
-                  <TouchableOpacity
-                    key={contact.id}
-                    style={[
-                      styles.contactOption,
-                      selectedContact?.id === contact.id && styles.contactOptionSelected
-                    ]}
-                    onPress={() => setSelectedContact(contact)}
-                  >
-                    <Text style={[
-                      styles.contactOptionText,
-                      selectedContact?.id === contact.id && styles.contactOptionTextSelected
-                    ]}>
-                      {contact.name} ({contact.relationship})
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-                {contacts.length > 8 && (
-                  <Text style={styles.moreContactsText}>
-                    +{contacts.length - 8} more contacts available
-                  </Text>
+
+            {/* Search Bar */}
+            <TextInput
+              style={styles.searchInput}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholder="Type name or number"
+              placeholderTextColor="#95a5a6"
+              autoCorrect={false}
+              autoCapitalize="none"
+            />
+
+            {/* Selected Contact Display */}
+            {selectedContact && (
+              <View style={styles.selectedContactCard}>
+                <Text style={styles.selectedContactText}>
+                  Selected: {selectedContact.name} ({selectedContact.relationship})
+                </Text>
+                <TouchableOpacity
+                  onPress={() => setSelectedContact(null)}
+                  style={styles.clearSelectionButton}
+                >
+                  <Text style={styles.clearSelectionText}>✕</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {/* Search Results */}
+            {searchQuery.trim() && !selectedContact && (
+              <View style={styles.searchResults}>
+                {filteredContacts.length > 0 ? (
+                  filteredContacts.map((contact) => (
+                    <TouchableOpacity
+                      key={contact.id}
+                      style={styles.searchResultItem}
+                      onPress={() => {
+                        setSelectedContact(contact);
+                        setSearchQuery('');
+                      }}
+                    >
+                      <Text style={styles.searchResultName}>{contact.name}</Text>
+                      <Text style={styles.searchResultRelationship}>({contact.relationship})</Text>
+                    </TouchableOpacity>
+                  ))
+                ) : (
+                  <Text style={styles.noResultsText}>No contacts found for "{searchQuery}"</Text>
                 )}
               </View>
-            ) : (
-              <Text style={styles.noContactsText}>No contacts available</Text>
             )}
 
             {/* Frequency Selection */}
@@ -643,7 +699,7 @@ const styles = StyleSheet.create({
   },
   modalContentContainer: {
     padding: 20,
-    paddingBottom: 40, // Extra padding at bottom for keyboard
+    paddingBottom: 40,
   },
   sectionTitle: {
     fontSize: 16,
@@ -652,42 +708,72 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     marginTop: 20,
   },
-  // FIXED: Contact list styles
-  contactListContainer: {
-    marginBottom: 10,
-  },
-  contactOption: {
-    padding: 12,
-    backgroundColor: '#f8f9fa',
-    borderRadius: 8,
-    marginBottom: 8,
+  // Search interface styles
+  searchInput: {
     borderWidth: 1,
     borderColor: '#e0e0e0',
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    backgroundColor: '#f8f9fa',
+    marginBottom: 12,
   },
-  contactOptionSelected: {
+  selectedContactCard: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     backgroundColor: '#e8f4fd',
     borderColor: '#3498db',
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 12,
   },
-  contactOptionText: {
+  selectedContactText: {
     fontSize: 16,
-    color: '#2c3e50',
-  },
-  contactOptionTextSelected: {
     color: '#3498db',
     fontWeight: '600',
+    flex: 1,
   },
-  moreContactsText: {
+  clearSelectionButton: {
+    padding: 4,
+    marginLeft: 8,
+  },
+  clearSelectionText: {
+    fontSize: 18,
+    color: '#e74c3c',
+    fontWeight: 'bold',
+  },
+  searchResults: {
+    maxHeight: 200,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    borderRadius: 8,
+    backgroundColor: 'white',
+    marginBottom: 12,
+  },
+  searchResultItem: {
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  searchResultName: {
+    fontSize: 16,
+    color: '#2c3e50',
+    fontWeight: '500',
+  },
+  searchResultRelationship: {
     fontSize: 14,
     color: '#7f8c8d',
-    textAlign: 'center',
-    marginTop: 8,
-    fontStyle: 'italic',
   },
-  noContactsText: {
-    fontSize: 16,
-    color: '#7f8c8d',
-    textAlign: 'center',
+  noResultsText: {
     padding: 20,
+    textAlign: 'center',
+    color: '#7f8c8d',
+    fontSize: 14,
   },
   optionsGrid: {
     flexDirection: 'row',
