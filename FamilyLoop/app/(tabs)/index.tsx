@@ -2,6 +2,20 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, FlatList, Alert, Modal, TextInput } from 'react-native';
 import * as Contacts from 'expo-contacts';
 import { NameDetector } from '../../utils/nameDetector';
+import { CommunicationGoals } from '@/components/CommunicationGoals';
+
+interface CommunicationGoal {
+  id: string;
+  contactId: string;
+  contactName: string;
+  frequency: string;
+  frequencyDays: number;
+  method: string;
+  isActive: boolean;
+  lastContacted?: Date;
+  nextDue?: Date;
+  customNote?: string;
+}
 
 interface Contact {
   id: string;
@@ -43,6 +57,7 @@ export default function HomeScreen() {
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
   const [interactionType, setInteractionType] = useState<'call' | 'text' | 'in-person' | 'video-call' | 'other'>('call');
   const [interactionNote, setInteractionNote] = useState('');
+  const [communicationGoals, setCommunicationGoals] = useState<CommunicationGoal[]>([]);
 
   // Auto-load contacts when component mounts
   useEffect(() => {
@@ -449,6 +464,17 @@ export default function HomeScreen() {
       >
         <Text style={styles.refreshText}>↻ Refresh Contacts</Text>
       </TouchableOpacity>
+
+      {/* Communication goals component */}
+      <CommunicationGoals
+        contacts={contacts}
+        interactions={interactions}
+        /*goals={communicationGoals}
+        onGoalsChange={setCommunicationGoals}*/
+        onGoalCreated={() => {
+          console.log('New goal created!');
+        }}
+      />
 
       {/* Show grouped contacts */}
       {Object.keys(groupedContacts).length > 0 ? (
