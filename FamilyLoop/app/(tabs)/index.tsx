@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, FlatList, Alert, Modal, TextI
 import * as Contacts from 'expo-contacts';
 import { NameDetector } from '../../utils/nameDetector';
 import { CommunicationGoals } from '@/components/CommunicationGoals';
+import {FamilyEvents} from "@/components/FamilyEvents";
 
 interface CommunicationGoal {
   id: string;
@@ -473,6 +474,14 @@ export default function HomeScreen() {
         onGoalsChange={setCommunicationGoals}*/
         onGoalCreated={() => {
           console.log('New goal created!');
+        }}
+      />
+
+      {/* Family events component */}
+      <FamilyEvents
+        interactions={interactions}
+        onEventCreated={() => {
+          console.log('New event created!');
         }}
       />
 
