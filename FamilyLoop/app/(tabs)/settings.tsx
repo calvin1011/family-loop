@@ -22,7 +22,7 @@ export default function SettingsScreen() {
   }, []);
 
   const loadSettings = async () => {
-    const status = automaticDetection.getStatus();
+    const status = await automaticDetection.getStatus();
     setAutoDetectionEnabled(status.isEnabled);
     setLastScanTime(status.lastScan);
   };
@@ -55,6 +55,7 @@ export default function SettingsScreen() {
             style: 'destructive',
             onPress: () => {
               setAutoDetectionEnabled(false);
+              automaticDetection.setEnabled(false);
               // Could add logic to revoke or ignore permissions
             }
           }
