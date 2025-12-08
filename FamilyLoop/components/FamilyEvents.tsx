@@ -154,10 +154,10 @@ export function FamilyEvents({ interactions, onEventCreated }: Props) {
         });
 
         const enhancedContacts = data.map(contact => ({
-          ...contact, // Spread all existing properties from Expo Contacts
+          ...contact,
           relationship: detectBasicRelationship(contact.name || ''),
           group: 'Contacts'
-        }));
+        } as Contact));
 
         setAllContacts(enhancedContacts);
       }

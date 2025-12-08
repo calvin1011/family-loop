@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, FlatList, Alert, Modal, TextInput } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, Modal, TextInput, ScrollView } from 'react-native';
 import * as Contacts from 'expo-contacts';
 import { NameDetector } from '../../utils/nameDetector';
 import { CommunicationGoals } from '@/components/CommunicationGoals';
 import {FamilyEvents} from "@/components/FamilyEvents";
+import { relationshipAnalyzer, RelationshipInsight } from '../../utils/RelationshipAnalyzer';
 
 interface CommunicationGoal {
   id: string;
@@ -53,42 +54,67 @@ export default function HomeScreen() {
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  // Modal states
   const [showInteractionModal, setShowInteractionModal] = useState(false);
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
   const [interactionType, setInteractionType] = useState<'call' | 'text' | 'in-person' | 'video-call' | 'other'>('call');
   const [interactionNote, setInteractionNote] = useState('');
   const [communicationGoals, setCommunicationGoals] = useState<CommunicationGoal[]>([]);
 
-  // Auto-load contacts when component mounts
+  // AI insights state
+  const [showInsights, setShowInsights] = useState(false);
+  const [contactInsights, setContactInsights] = useState<Map<string, RelationshipInsight>>(new Map());
+
+
   useEffect(() => {
     loadContacts();
   }, []);
 
-  // Update contacts when interactions change
   useEffect(() => {
     if (contacts.length > 0) {
       updateContactsWithInteractions();
     }
   }, [interactions, contacts]);
 
-  // Smart filtering function - keeps only relevant contacts
+  useEffect(() => {
+    if (contacts.length > 0) {
+      calculateInsights();
+    }
+  }, [interactions]);
+
+  // Function to calculate insights
+  const calculateInsights = () => {
+    const insightsMap = new Map<string, RelationshipInsight>();
+
+    console.log(' Calculating insights...');
+    console.log(` Total contacts: ${contacts.length}`);
+    console.log(` Total interactions: ${interactions.length}`);
+
+    // Calculate insight for each contact
+    contacts.forEach(contact => {
+      const insight = relationshipAnalyzer.calculateInsight(contact, interactions);
+      insightsMap.set(contact.id, insight);
+
+      if (insight.totalInteractions > 0) {
+        console.log(` Contact: ${contact.name}, Interactions: ${insight.totalInteractions}, Score: ${insight.score}`);
+      }
+    });
+
+    setContactInsights(insightsMap);
+  };
+
   const smartFilterContacts = (allContacts: any[]) => {
     return allContacts.filter(contact => {
       const name = contact.name || '';
 
-      // Always keep family members (regardless of anything else)
       const relationship = nameDetector.detectRelationship(name);
       if (['Mother', 'Father', 'Sister', 'Brother', 'Uncle', 'Aunt', 'Grandmother', 'Grandfather', 'Cousin'].includes(relationship)) {
-        return true; // Family always included
+        return true;
       }
 
-      // Must have a phone number (can't contact without it)
       if (!contact.phoneNumbers || contact.phoneNumbers.length === 0) {
         return false;
       }
 
-      // Filter out obvious spam/business junk
       const lowerName = name.toLowerCase();
       if (lowerName.includes('spam') ||
           lowerName.includes('telemarketer') ||
@@ -96,7 +122,6 @@ export default function HomeScreen() {
         return false;
       }
 
-      // Keep work contacts and friends
       if (['Work', 'Friend'].includes(relationship)) {
         return true;
       }
@@ -190,12 +215,12 @@ export default function HomeScreen() {
       return groups;
     }, {});
 
-    // Sort each group by days since contact (most urgent first)
+    // Sort each group by days since contact
     Object.keys(grouped).forEach(groupName => {
       grouped[groupName].sort((a, b) => {
         const aDays = a.daysSinceContact ?? 999;
         const bDays = b.daysSinceContact ?? 999;
-        return bDays - aDays; // Longest time since contact first
+        return aDays - bDays;
       });
     });
 
@@ -214,6 +239,21 @@ export default function HomeScreen() {
     };
 
     setInteractions(prev => [...prev, newInteraction]);
+
+    console.log('Adding interaction:', {
+      contactName: selectedContact.name,
+      contactId: selectedContact.id,
+      type: interactionType
+    });
+
+    setInteractions(prev => {
+      const updated = [...prev, newInteraction];
+      console.log('All interactions now:', updated.length);
+      updated.forEach(i => {
+        console.log(`   - Contact ID: ${i.contactId}, Type: ${i.type}, Date: ${i.date}`);
+      });
+      return updated;
+    });
 
     // Reset modal
     setShowInteractionModal(false);
@@ -236,11 +276,11 @@ export default function HomeScreen() {
   };
 
   const getUrgencyColor = (daysSince?: number) => {
-    if (!daysSince) return '#95a5a6'; // No interaction yet
-    if (daysSince <= 3) return '#27ae60'; // Recent - green
-    if (daysSince <= 7) return '#f39c12'; // Week - orange
-    if (daysSince <= 30) return '#e67e22'; // Month - dark orange
-    return '#e74c3c'; // Long time - red
+    if (!daysSince) return '#95a5a6';
+    if (daysSince <= 3) return '#27ae60';
+    if (daysSince <= 7) return '#f39c12';
+    if (daysSince <= 30) return '#e67e22';
+    return '#e74c3c';
   };
 
   const getUrgencyText = (daysSince?: number, relationship?: string) => {
@@ -254,44 +294,68 @@ export default function HomeScreen() {
     return `${Math.floor(daysSince / 365)} years ago`;
   };
 
-  const ContactCard = ({ contact }: { contact: Contact }) => (
-    <View style={styles.contactCard}>
-      <View style={styles.contactInfo}>
-        <View style={styles.contactHeader}>
-          <Text style={styles.contactName}>{contact.name || 'No Name'}</Text>
-          <View style={[styles.relationshipBadge, { backgroundColor: getGroupColor(contact.group || 'Contacts') }]}>
-            <Text style={styles.relationshipText}>{contact.relationship}</Text>
-          </View>
-        </View>
+  const ContactCard = ({ contact }: { contact: Contact }) => {
+    // Get insight for this contact
+    const insight = contactInsights.get(contact.id);
 
-        <View style={styles.interactionInfo}>
-          <View style={styles.lastContactRow}>
-            <Text style={styles.lastContactIcon}>
-              {getInteractionIcon(contact.interactionType)}
-            </Text>
-            <Text style={[styles.lastContactText, { color: getUrgencyColor(contact.daysSinceContact) }]}>
-              {getUrgencyText(contact.daysSinceContact, contact.relationship)}
-            </Text>
+    return (
+      <View style={styles.contactCard}>
+        <View style={styles.contactInfo}>
+          <View style={styles.contactHeader}>
+            <Text style={styles.contactName}>{contact.name || 'No Name'}</Text>
+            <View style={[styles.relationshipBadge, { backgroundColor: getGroupColor(contact.group || 'Contacts') }]}>
+              <Text style={styles.relationshipText}>{contact.relationship}</Text>
+            </View>
           </View>
-          {contact.interactionNote && (
-            <Text style={styles.interactionNote} numberOfLines={1}>
-              "{contact.interactionNote}"
-            </Text>
+
+          <View style={styles.interactionInfo}>
+            <View style={styles.lastContactRow}>
+              <Text style={styles.lastContactIcon}>
+                {getInteractionIcon(contact.interactionType)}
+              </Text>
+              <Text style={[styles.lastContactText, { color: getUrgencyColor(contact.daysSinceContact) }]}>
+                {getUrgencyText(contact.daysSinceContact, contact.relationship)}
+              </Text>
+            </View>
+            {contact.interactionNote && (
+              <Text style={styles.interactionNote} numberOfLines={1}>
+                "{contact.interactionNote}"
+              </Text>
+            )}
+          </View>
+
+          {insight && insight.totalInteractions > 0 && (
+            <View style={styles.aiInsightBox}>
+              <View style={styles.insightScoreRow}>
+                <Text style={styles.insightLabel}>Health Score:</Text>
+                <View style={styles.scoreBar}>
+                  <View style={[
+                    styles.scoreBarFill,
+                    {
+                      width: `${insight.score}%`,
+                      backgroundColor: insight.score > 70 ? '#27ae60' : insight.score > 40 ? '#f39c12' : '#e74c3c'
+                    }
+                  ]} />
+                  <Text style={styles.scoreText}>{insight.score}</Text>
+                </View>
+              </View>
+              <Text style={styles.insightSuggestion}>💡 {insight.suggestedAction}</Text>
+            </View>
           )}
         </View>
-      </View>
 
-      <TouchableOpacity
-        style={styles.addInteractionButton}
-        onPress={() => {
-          setSelectedContact(contact);
-          setShowInteractionModal(true);
-        }}
-      >
-        <Text style={styles.addInteractionText}>+ Log Contact</Text>
-      </TouchableOpacity>
-    </View>
-  );
+        <TouchableOpacity
+          style={styles.addInteractionButton}
+          onPress={() => {
+            setSelectedContact(contact);
+            setShowInteractionModal(true);
+          }}
+        >
+          <Text style={styles.addInteractionText}>+ Log Contact</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  };
 
   // Different colors for different types of relationships
   const getGroupColor = (group: string): string => {
@@ -443,6 +507,12 @@ export default function HomeScreen() {
     );
   }
 
+  const needsAttention = relationshipAnalyzer.getContactsNeedingAttention(
+    contacts,
+    interactions,
+    3
+  );
+
   // Main content - contacts loaded successfully
   return (
     <View style={styles.container}>
@@ -458,52 +528,79 @@ export default function HomeScreen() {
         )}
       </View>
 
-      {/* Optional manual refresh button */}
-      <TouchableOpacity
-        style={styles.refreshButton}
-        onPress={loadContacts}
+      {/* Scrollable Content */}
+      <ScrollView
+        style={styles.scrollContainer}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
       >
-        <Text style={styles.refreshText}>↻ Refresh Contacts</Text>
-      </TouchableOpacity>
+        {/* Optional manual refresh button */}
+        <TouchableOpacity
+          style={styles.refreshButton}
+          onPress={loadContacts}
+        >
+          <Text style={styles.refreshText}>↻ Refresh Contacts</Text>
+        </TouchableOpacity>
 
-      {/* Communication goals component */}
-      <CommunicationGoals
-        contacts={contacts}
-        interactions={interactions}
-        /*goals={communicationGoals}
-        onGoalsChange={setCommunicationGoals}*/
-        onGoalCreated={() => {
-          console.log('New goal created!');
-        }}
-      />
+        {/* Needs Attention Card */}
+        {needsAttention.length > 0 && (
+          <View style={styles.needsAttentionCard}>
+            <Text style={styles.needsAttentionTitle}>🎯 Needs Your Attention</Text>
+            {needsAttention.map(insight => (
+              <TouchableOpacity
+                key={insight.contactId}
+                style={styles.attentionItem}
+                onPress={() => {
+                  const contact = contacts.find(c => c.id === insight.contactId);
+                  if (contact) {
+                    setSelectedContact(contact);
+                    setShowInteractionModal(true);
+                  }
+                }}
+              >
+                <View style={styles.attentionInfo}>
+                  <Text style={styles.attentionName}>{insight.contactName}</Text>
+                  <Text style={styles.attentionReason}>{insight.reason}</Text>
+                </View>
+                <Text style={styles.attentionDays}>{insight.lastContactDays}d</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
 
-      {/* Family events component */}
-      <FamilyEvents
-        interactions={interactions}
-        onEventCreated={() => {
-          console.log('New event created!');
-        }}
-      />
-
-      {/* Show grouped contacts */}
-      {Object.keys(groupedContacts).length > 0 ? (
-        <FlatList
-          data={Object.entries(groupedContacts)}
-          keyExtractor={([groupName]) => groupName}
-          renderItem={({ item: [groupName, contacts] }) => (
-            <GroupSection groupName={groupName} contacts={contacts} />
-          )}
-          style={styles.groupsList}
-          showsVerticalScrollIndicator={false}
+        {/* Communication goals component */}
+        <CommunicationGoals
+          contacts={contacts}
+          interactions={interactions}
+          /*goals={communicationGoals}
+          onGoalsChange={setCommunicationGoals}*/
+          onGoalCreated={() => {
+            console.log('New goal created!');
+          }}
         />
-      ) : (
-        <View style={styles.emptyState}>
-          <Text style={styles.emptyTitle}>No Contacts Found</Text>
-          <Text style={styles.emptyText}>
-            Make sure you have contacts saved on your device to start tracking communication.
-          </Text>
-        </View>
-      )}
+
+        {/* Family events component */}
+        <FamilyEvents
+          interactions={interactions}
+          onEventCreated={() => {
+            console.log('New event created!');
+          }}
+        />
+
+        {/* Show grouped contacts */}
+        {Object.keys(groupedContacts).length > 0 ? (
+          Object.entries(groupedContacts).map(([groupName, contacts]) => (
+            <GroupSection key={groupName} groupName={groupName} contacts={contacts} />
+          ))
+        ) : (
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyTitle}>No Contacts Found</Text>
+            <Text style={styles.emptyText}>
+              Make sure you have contacts saved on your device to start tracking communication.
+            </Text>
+          </View>
+        )}
+      </ScrollView>
 
       <InteractionModal />
     </View>
@@ -813,5 +910,100 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 16,
     fontWeight: '600',
+  },
+  aiInsightBox: {
+    backgroundColor: '#f8f9fa',
+    borderRadius: 6,
+    padding: 10,
+    marginTop: 8,
+    borderLeftWidth: 3,
+    borderLeftColor: '#3498db',
+  },
+  insightScoreRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  insightLabel: {
+    fontSize: 12,
+    color: '#7f8c8d',
+    marginRight: 8,
+    fontWeight: '500',
+  },
+  scoreBar: {
+    flex: 1,
+    height: 16,
+    backgroundColor: '#ecf0f1',
+    borderRadius: 8,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  scoreBarFill: {
+    height: '100%',
+    borderRadius: 8,
+  },
+  scoreText: {
+    position: 'absolute',
+    right: 6,
+    top: 1,
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#2c3e50',
+  },
+  insightSuggestion: {
+    fontSize: 12,
+    color: '#34495e',
+    fontStyle: 'italic',
+  },
+
+  needsAttentionCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  needsAttentionTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#e74c3c',
+    marginBottom: 12,
+  },
+  attentionItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#ecf0f1',
+  },
+  attentionInfo: {
+    flex: 1,
+  },
+  attentionName: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#2c3e50',
+    marginBottom: 3,
+  },
+  attentionReason: {
+    fontSize: 12,
+    color: '#e74c3c',
+  },
+  attentionDays: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#e74c3c',
+    marginLeft: 12,
+  },
+  scrollContainer: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingBottom: 20,
   },
 });

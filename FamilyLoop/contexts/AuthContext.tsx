@@ -3,7 +3,7 @@ import { Platform } from 'react-native';
 import { initializeApp, getApp, getApps } from 'firebase/app';
 import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword,
   signOut as firebaseSignOut, updateProfile as firebaseUpdateProfile, GoogleAuthProvider, signInWithCredential,
-  User as FirebaseUser, Auth, setPersistence, browserSessionPersistence, browserLocalPersistence } from 'firebase/auth';
+  setPersistence, browserLocalPersistence } from 'firebase/auth';
 import { useIdTokenAuthRequest } from "expo-auth-session/providers/google";
 import * as WebBrowser from 'expo-web-browser';
 import Constants from 'expo-constants';
@@ -50,7 +50,6 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
-// Get environment variables from Expo config
 const extra = Constants.expoConfig?.extra;
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
@@ -87,7 +86,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   }, []);
 
-  // Firebase auth state listener - handles automatic persistence
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
       console.log('Auth state changed:', firebaseUser ? 'User logged in' : 'User logged out');
