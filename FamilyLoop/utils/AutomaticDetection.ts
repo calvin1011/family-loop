@@ -80,9 +80,21 @@ export class AutomaticDetectionService {
         }
       );
 
+      const contactsPermission = await PermissionsAndroid.request(
+        PermissionsAndroid.PERMISSIONS.READ_CONTACTS,
+        {
+          title: 'Contacts Permission',
+          message: 'Family Loop needs access to your contacts to match phone numbers.',
+          buttonNeutral: 'Ask Me Later',
+          buttonNegative: 'Cancel',
+          buttonPositive: 'OK',
+        }
+      );
+
       const granted =
         callLogPermission === PermissionsAndroid.RESULTS.GRANTED &&
-        smsPermission === PermissionsAndroid.RESULTS.GRANTED;
+        smsPermission === PermissionsAndroid.RESULTS.GRANTED &&
+        contactsPermission === PermissionsAndroid.RESULTS.GRANTED;
 
       return granted;
     } catch (error) {
