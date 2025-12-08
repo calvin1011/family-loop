@@ -195,11 +195,36 @@ export default function SettingsScreen() {
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Data Management</Text>
 
-        <TouchableOpacity style={styles.dangerButton}>
+        <TouchableOpacity 
+          style={styles.dangerButton}
+          onPress={() => {
+            // TODO: Implement data export
+            Alert.alert('Export Data', 'Data export functionality will be implemented.');
+          }}
+        >
           <Text style={styles.dangerButtonText}>Export All Data</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.dangerButton}>
+        <TouchableOpacity 
+          style={styles.dangerButton}
+          onPress={() => {
+            Alert.alert(
+              'Delete All Data',
+              'Are you sure? This action cannot be undone.',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                { 
+                  text: 'Delete', 
+                  style: 'destructive',
+                  onPress: () => {
+                    // TODO: Implement data deletion
+                    Alert.alert('Deleted', 'All data has been deleted.');
+                  }
+                }
+              ]
+            );
+          }}
+        >
           <Text style={styles.dangerButtonText}>Delete All Data</Text>
         </TouchableOpacity>
       </View>
