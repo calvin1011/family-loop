@@ -91,7 +91,7 @@ export default function HomeScreen() {
   }, []);
 
   const checkAutoDetectionStatus = async () => {
-    const status = automaticDetection.getStatus();
+    const status = await automaticDetection.getStatus();
     setLastScanTime(status.lastScan);
     setAutoDetectionEnabled(status.isEnabled);
   };
@@ -165,7 +165,7 @@ export default function HomeScreen() {
         });
 
         // Update last scan time
-        const status = automaticDetection.getStatus();
+        const status = await automaticDetection.getStatus();
         setLastScanTime(status.lastScan);
 
         Alert.alert(

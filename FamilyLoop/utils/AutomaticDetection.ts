@@ -48,6 +48,15 @@ export class AutomaticDetectionService {
     this.loadLastScanTime();
   }
 
+  async setEnabled(enabled: boolean): Promise<void> {
+    await AsyncStorage.setItem('@family_loop_enabled', enabled.toString());
+  }
+
+  async isEnabled(): Promise<boolean> {
+    const stored = await AsyncStorage.getItem('@family_loop_enabled');
+    return stored === 'true';
+  }
+
   /**
    * Request all necessary permissions for automatic detection
    */
@@ -174,9 +183,12 @@ export class AutomaticDetectionService {
    * Scan call logs for new interactions
    */
   async scanCallLogs(contacts: Contact[]): Promise<DetectedInteraction[]> {
-    if (Platform.OS !== 'android') {
-      return [];
-    }
+    if (Platform.OS !== 'android' || !CallLogs) {
+      if (Platform.OS === 'android' && !CallLogs) {
+        console.warn('CallLogs module not available');
+      }
+       return [];
+     }
 
     try {
       // Fetch call logs since last scan
@@ -309,7 +321,11 @@ export class AutomaticDetectionService {
   /**
    * Get detection status
    */
-  getStatus() {
+  async getStatus() {
+    // Ensure last scan time is loaded
+    if (this.lastScanTimestamp === 0) {
+      await this.loadLastScanTime();
+    }
     return {
       lastScan: new Date(this.lastScanTimestamp),
       isEnabled: Platform.OS === 'android',
