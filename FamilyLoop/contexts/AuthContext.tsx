@@ -1,12 +1,13 @@
 import React, { createContext, useContext, useState, useEffect, useMemo, ReactNode } from 'react';
 import { Platform } from 'react-native';
 import { initializeApp, getApp, getApps } from 'firebase/app';
-import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword,
+import { initializeAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword,
   signOut as firebaseSignOut, updateProfile as firebaseUpdateProfile, GoogleAuthProvider, signInWithCredential,
-  setPersistence, browserLocalPersistence } from 'firebase/auth';
+  getReactNativePersistence } from 'firebase/auth';
 import { useIdTokenAuthRequest } from "expo-auth-session/providers/google";
 import * as WebBrowser from 'expo-web-browser';
 import Constants from 'expo-constants';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -24,7 +25,9 @@ const firebaseConfig = {
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
 // Initialize Firebase Auth with persistence
-const auth = getAuth(app);
+const auth = initializeAuth(app, {
+  persistence: getReactNativePersistence(AsyncStorage)
+});
 
 interface User {
   uid: string;
@@ -72,19 +75,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }),
     scopes: googleAuthConfig.scopes,
   });
-
-  // Set up Firebase Auth persistence
-  useEffect(() => {
-    if (Platform.OS === 'web') {
-      setPersistence(auth, browserLocalPersistence)
-        .then(() => {
-          console.log('Firebase persistence set to local storage');
-        })
-        .catch((error) => {
-          console.error('Failed to set Firebase persistence:', error);
-        });
-    }
-  }, []);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
