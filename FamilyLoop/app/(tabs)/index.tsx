@@ -5,6 +5,7 @@ import { NameDetector } from '../../utils/nameDetector';
 import { CommunicationGoals } from '@/components/CommunicationGoals';
 import {FamilyEvents} from "@/components/FamilyEvents";
 import { relationshipAnalyzer, RelationshipInsight } from '../../utils/RelationshipAnalyzer';
+import { automaticDetection } from '../../utils/AutomaticDetection';
 
 interface CommunicationGoal {
   id: string;
@@ -64,6 +65,10 @@ export default function HomeScreen() {
   const [showInsights, setShowInsights] = useState(false);
   const [contactInsights, setContactInsights] = useState<Map<string, RelationshipInsight>>(new Map());
 
+  const [autoDetectionEnabled, setAutoDetectionEnabled] = useState(false);
+  const [isScanning, setIsScanning] = useState(false);
+  const [lastScanTime, setLastScanTime] = useState<Date | null>(null);
+
 
   useEffect(() => {
     loadContacts();
@@ -80,6 +85,104 @@ export default function HomeScreen() {
       calculateInsights();
     }
   }, [interactions]);
+
+  useEffect(() => {
+    checkAutoDetectionStatus();
+  }, []);
+
+  const checkAutoDetectionStatus = async () => {
+    const status = automaticDetection.getStatus();
+    setLastScanTime(status.lastScan);
+    setAutoDetectionEnabled(status.isEnabled);
+  };
+
+  const enableAutoDetection = async () => {
+    const hasPermissions = await automaticDetection.requestPermissions();
+
+    if (hasPermissions) {
+      setAutoDetectionEnabled(true);
+      Alert.alert(
+        'Automatic Detection Enabled!',
+        'Family Loop will now automatically track your calls and texts with family members.',
+        [
+          {
+            text: 'Scan Now',
+            onPress: runAutoDetectionScan
+          },
+          {
+            text: 'OK',
+            style: 'cancel'
+          }
+        ]
+      );
+    } else {
+      Alert.alert(
+        'Permissions Required',
+        'Family Loop needs access to call logs and SMS to automatically detect interactions.',
+        [{ text: 'OK' }]
+      );
+    }
+  };
+
+  const runAutoDetectionScan = async () => {
+    if (contacts.length === 0) {
+      Alert.alert('No Contacts', 'Please load your contacts first before scanning.');
+      return;
+    }
+
+    setIsScanning(true);
+    console.log('Starting automatic detection scan...');
+
+    try {
+      const detectedInteractions = await automaticDetection.scanForNewInteractions(contacts);
+
+      if (detectedInteractions.length === 0) {
+        Alert.alert(
+          'No New Interactions',
+          'No new calls or texts detected since last scan.',
+          [{ text: 'OK' }]
+        );
+      } else {
+        // Convert detected interactions to your app's format
+        const newInteractions = detectedInteractions.map(detected => ({
+          id: detected.id,
+          contactId: detected.contactId,
+          type: detected.type === 'call' ?
+            (detected.isOutgoing ? 'call' : 'call') :
+            'text' as 'call' | 'text' | 'in-person' | 'video-call' | 'other',
+          date: detected.date,
+          note: detected.autoDetected ?
+            `Auto-detected: ${detected.duration ? `${Math.round(detected.duration / 60)} min call` : 'Text message'}` :
+            undefined
+        }));
+
+        // Add to existing interactions
+        setInteractions(prev => {
+          // Deduplicate by checking if interaction already exists
+          const existingIds = new Set(prev.map(i => i.id));
+          const uniqueNew = newInteractions.filter(ni => !existingIds.has(ni.id));
+          return [...prev, ...uniqueNew];
+        });
+
+        // Update last scan time
+        const status = automaticDetection.getStatus();
+        setLastScanTime(status.lastScan);
+
+        Alert.alert(
+          'Interactions Detected!',
+          `Found ${detectedInteractions.length} new interactions:\n` +
+          `• ${detectedInteractions.filter(i => i.type === 'call').length} calls\n` +
+          `• ${detectedInteractions.filter(i => i.type === 'text').length} text messages`,
+          [{ text: 'Great!' }]
+        );
+      }
+    } catch (error) {
+      console.error('Auto-detection error:', error);
+      Alert.alert('Scan Failed', 'Could not scan for interactions. Please try again.');
+    }
+
+    setIsScanning(false);
+  };
 
   // Function to calculate insights
   const calculateInsights = () => {
@@ -527,6 +630,49 @@ export default function HomeScreen() {
           </Text>
         )}
       </View>
+
+      {!autoDetectionEnabled && (
+        <TouchableOpacity
+          style={styles.autoDetectionBanner}
+          onPress={enableAutoDetection}
+        >
+          <View style={styles.autoDetectionContent}>
+            <Text style={styles.autoDetectionIcon}>🤖</Text>
+            <View style={styles.autoDetectionText}>
+              <Text style={styles.autoDetectionTitle}>Enable Automatic Tracking</Text>
+              <Text style={styles.autoDetectionSubtitle}>
+                Never forget to log a call or text again
+              </Text>
+            </View>
+            <Text style={styles.autoDetectionArrow}>→</Text>
+          </View>
+        </TouchableOpacity>
+      )}
+
+      {autoDetectionEnabled && (
+        <View style={styles.autoDetectionStatus}>
+          <View style={styles.statusRow}>
+            <View style={styles.statusIndicator}>
+              <View style={styles.statusDot} />
+              <Text style={styles.statusText}>Auto-Detection Active</Text>
+            </View>
+            <TouchableOpacity
+              style={styles.scanButton}
+              onPress={runAutoDetectionScan}
+              disabled={isScanning}
+            >
+              <Text style={styles.scanButtonText}>
+                {isScanning ? ' Scanning...' : ' Scan Now'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+          {lastScanTime && (
+            <Text style={styles.lastScanText}>
+              Last scan: {lastScanTime.toLocaleTimeString()}
+            </Text>
+          )}
+        </View>
+      )}
 
       {/* Scrollable Content */}
       <ScrollView
@@ -1005,5 +1151,90 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingBottom: 20,
+  },
+  autoDetectionBanner: {
+    backgroundColor: '#e8f4fd',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    borderWidth: 2,
+    borderColor: '#3498db',
+  },
+  autoDetectionContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  autoDetectionIcon: {
+    fontSize: 32,
+    marginRight: 12,
+  },
+  autoDetectionText: {
+    flex: 1,
+  },
+  autoDetectionTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#2c3e50',
+    marginBottom: 2,
+  },
+  autoDetectionSubtitle: {
+    fontSize: 13,
+    color: '#7f8c8d',
+  },
+  autoDetectionArrow: {
+    fontSize: 24,
+    color: '#3498db',
+    fontWeight: 'bold',
+  },
+  autoDetectionStatus: {
+    backgroundColor: '#e8f5e9',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#27ae60',
+  },
+  statusRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  statusIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#27ae60',
+    marginRight: 8,
+  },
+  statusText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#27ae60',
+  },
+  scanButton: {
+    backgroundColor: '#3498db',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  scanButtonText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  lastScanText: {
+    fontSize: 11,
+    color: '#7f8c8d',
+    marginTop: 4,
   },
 });
