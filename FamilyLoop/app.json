@@ -16,6 +16,7 @@
       }
     },
     "android": {
+      "privacyPolicy": "https://calvin1011.github.io/familyloop-privacy",
       "permissions": [
         "READ_CALL_LOG",
         "READ_SMS",
@@ -44,8 +45,7 @@
           "backgroundColor": "#ffffff"
         }
       ],
-      "@react-native-google-signin/google-signin",
-      "expo-dev-client"
+      "@react-native-google-signin/google-signin"
     ],
     "experiments": {
       "typedRoutes": true
