@@ -1,0 +1,12 @@
+# CodeRabbit: https://docs.coderabbit.ai/reference/yaml-template
+# Agent workflow (WSL, once per chat, no MD review spam): .cursor/rules/coderabbit-session.mdc
+
+language: en-US
+
+reviews:
+  profile: assertive
+  high_level_summary: true
+  # Exclude Markdown from review scope (no .md/.mdx file reviews)
+  path_filters:
+    - "!**/*.md"
+    - "!**/*.mdx"

@@ -1,0 +1,14 @@
+---
+description: Prefer self-explanatory code over noisy comments (TS/JS/TSX/JSX)
+alwaysApply: true
+---
+
+# Comments: keep them rare
+
+- **Avoid** comments that restate the next line (`// set loading to true` above `setLoading(true)`).
+- **Avoid** large commented-out blocks; delete and rely on git history. If something must stay temporarily, add a one-line `TODO(ticket): reason` with an issue link.
+- **Use** clear names, small functions, and types instead of inline narration.
+- **Allow** brief comments when the **why** is non-obvious (spec edge case, platform quirk, perf tradeoff, security constraint).
+- **Allow** JSDoc on public exports when it helps consumers.
+
+When editing, remove redundant comments you touch unless they match the exceptions above.

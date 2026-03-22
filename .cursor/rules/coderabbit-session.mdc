@@ -1,0 +1,23 @@
+---
+description: CodeRabbit usage—WSL, once per chat, no repeat runs, no MD review
+alwaysApply: true
+---
+
+# CodeRabbit workflow (agent + humans)
+
+## Where to run CodeRabbit CLI
+
+- Run CodeRabbit **from WSL** (Linux shell), not from raw Windows CMD, when using the CLI or any local CodeRabbit command. Example: open a WSL terminal in the repo, or `wsl -e bash -lc "cd /mnt/c/path/to/family-loop && <command>"`.
+
+## How often (Cursor chat / session)
+
+- Trigger at most **one** CodeRabbit review per **Cursor chat thread** (e.g. one CLI invocation or one explicit “run CodeRabbit” for that thread).
+- After review feedback is **addressed in code**, **do not** trigger CodeRabbit again in the **same** chat to “re-check” — this burns quota; rely on normal PR/GitHub review or a **new** chat if a second pass is truly needed.
+
+## Markdown
+
+- **Do not** ask CodeRabbit to review `*.md` / docs-only changes for nitpicks. Repo config excludes them (see `.coderabbit.yaml`). Agents should not override that for routine doc edits.
+
+## When a new CodeRabbit run is OK
+
+- A **new** PR or **new** chat where no CodeRabbit run happened yet, or explicit user request outside the “already ran this thread” case.
