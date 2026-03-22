@@ -9,24 +9,19 @@ import 'react-native-reanimated';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 
-// Component that handles authentication routing
 function RootLayoutNav() {
   const { isAuthenticated, isLoading } = useAuth();
 
-  // Handle navigation when auth state changes
   useEffect(() => {
     if (!isLoading) {
       if (!isAuthenticated) {
-        console.log('User not authenticated, navigating to onboarding');
         router.replace('/(auth)/onboarding');
       } else {
-        console.log('User authenticated, navigating to main app');
         router.replace('/(tabs)');
       }
     }
   }, [isAuthenticated, isLoading]);
 
-  // Show loading screen while checking authentication status
   if (isLoading) {
     return (
       <View style={{
@@ -51,7 +46,6 @@ function RootLayoutNav() {
           Checking authentication...
         </Text>
 
-        {/* Loading indicator */}
         <View style={{
           width: 40,
           height: 40,
@@ -64,7 +58,6 @@ function RootLayoutNav() {
     );
   }
 
-  // Show all possible routes - navigation will handle which one to show
   return (
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="(auth)" options={{ headerShown: false }} />
@@ -81,7 +74,6 @@ export default function RootLayout() {
   });
 
   if (!loaded) {
-    // Show loading screen while fonts load
     return (
       <View style={{
         flex: 1,

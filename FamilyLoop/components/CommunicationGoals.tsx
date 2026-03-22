@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -20,7 +20,7 @@ interface Contact {
   name?: string;
   relationship?: string;
   group?: string;
-  phoneNumbers?: Array<{ number: string }>;
+  phoneNumbers?: { number: string }[];
 }
 
 interface CommunicationGoal {
@@ -38,12 +38,12 @@ interface CommunicationGoal {
 
 interface Props {
   contacts: Contact[];
-  interactions: Array<{
+  interactions: {
     id: string;
     contactId: string;
     type: string;
     date: Date;
-  }>;
+  }[];
   onGoalCreated?: () => void;
 }
 
@@ -70,52 +70,18 @@ export function CommunicationGoals({ contacts, interactions, onGoalCreated }: Pr
   const [selectedFrequency, setSelectedFrequency] = useState<string>('weekly');
   const [selectedMethod, setSelectedMethod] = useState<string>('any');
   const [customNote, setCustomNote] = useState('');
-  const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [filteredContacts, setFilteredContacts] = useState<Contact[]>([]);
 
-  // Load goals from storage on component mount
-  useEffect(() => {
-    loadGoals();
+  const saveGoals = useCallback(async (newGoals: CommunicationGoal[]) => {
+    try {
+      await AsyncStorage.setItem('communication_goals', JSON.stringify(newGoals));
+    } catch (error) {
+      console.error('Failed to save goals:', error);
+    }
   }, []);
 
-  // Update goals when interactions change
-  useEffect(() => {
-    updateGoalsProgress();
-  }, [interactions, goals]);
-
-  // Filter contacts based on search query
-  useEffect(() => {
-    if (!searchQuery.trim()) {
-      setFilteredContacts([]);
-      return;
-    }
-
-    const query = searchQuery.toLowerCase();
-    const filtered = contacts.filter(contact => {
-      const name = (contact.name || '').toLowerCase();
-      const relationship = (contact.relationship || '').toLowerCase();
-
-      // Search by name
-      if (name.includes(query)) return true;
-
-      // Search by relationship
-      if (relationship.includes(query)) return true;
-
-      // Search by phone number if contact has one
-      if (contact.phoneNumbers && contact.phoneNumbers.length > 0) {
-        return contact.phoneNumbers.some(phone =>
-          phone.number.replace(/[^\d]/g, '').includes(query.replace(/[^\d]/g, ''))
-        );
-      }
-
-      return false;
-    }).slice(0, 10); // Limit to 10 results
-
-    setFilteredContacts(filtered);
-  }, [searchQuery, contacts]);
-
-  const loadGoals = async () => {
+  const loadGoals = useCallback(async () => {
     try {
       const stored = await AsyncStorage.getItem('communication_goals');
       if (stored) {
@@ -129,48 +95,77 @@ export function CommunicationGoals({ contacts, interactions, onGoalCreated }: Pr
     } catch (error) {
       console.error('Failed to load goals:', error);
     }
-  };
+  }, []);
 
-  const saveGoals = async (newGoals: CommunicationGoal[]) => {
-    try {
-      await AsyncStorage.setItem('communication_goals', JSON.stringify(newGoals));
-    } catch (error) {
-      console.error('Failed to save goals:', error);
+  const updateGoalsProgress = useCallback(() => {
+    setGoals(prevGoals => {
+      const updatedGoals = prevGoals.map(goal => {
+        const contactInteractions = interactions
+          .filter(interaction => interaction.contactId === goal.contactId)
+          .filter(interaction => {
+            if (goal.method === 'any') return true;
+            if (goal.method === 'call') return interaction.type === 'call' || interaction.type === 'video-call';
+            if (goal.method === 'text') return interaction.type === 'text';
+            return true;
+          })
+          .sort((a, b) => b.date.getTime() - a.date.getTime());
+
+        const lastInteraction = contactInteractions[0];
+
+        if (lastInteraction) {
+          const nextDue = new Date(lastInteraction.date.getTime() + (goal.frequencyDays * 24 * 60 * 60 * 1000));
+          return {
+            ...goal,
+            lastContacted: lastInteraction.date,
+            nextDue: nextDue
+          };
+        }
+
+        return goal;
+      });
+
+      if (JSON.stringify(updatedGoals) !== JSON.stringify(prevGoals)) {
+        void saveGoals(updatedGoals);
+        return updatedGoals;
+      }
+      return prevGoals;
+    });
+  }, [interactions, saveGoals]);
+
+  useEffect(() => {
+    void loadGoals();
+  }, [loadGoals]);
+
+  useEffect(() => {
+    updateGoalsProgress();
+  }, [goals, updateGoalsProgress]);
+
+  useEffect(() => {
+    if (!searchQuery.trim()) {
+      setFilteredContacts([]);
+      return;
     }
-  };
 
-  const updateGoalsProgress = () => {
-    const updatedGoals = goals.map(goal => {
-      // Find most recent interaction with this contact
-      const contactInteractions = interactions
-        .filter(interaction => interaction.contactId === goal.contactId)
-        .filter(interaction => {
-          if (goal.method === 'any') return true;
-          if (goal.method === 'call') return interaction.type === 'call' || interaction.type === 'video-call';
-          if (goal.method === 'text') return interaction.type === 'text';
-          return true;
-        })
-        .sort((a, b) => b.date.getTime() - a.date.getTime());
+    const query = searchQuery.toLowerCase();
+    const filtered = contacts.filter(contact => {
+      const name = (contact.name || '').toLowerCase();
+      const relationship = (contact.relationship || '').toLowerCase();
 
-      const lastInteraction = contactInteractions[0];
+      if (name.includes(query)) return true;
 
-      if (lastInteraction) {
-        const nextDue = new Date(lastInteraction.date.getTime() + (goal.frequencyDays * 24 * 60 * 60 * 1000));
-        return {
-          ...goal,
-          lastContacted: lastInteraction.date,
-          nextDue: nextDue
-        };
+      if (relationship.includes(query)) return true;
+
+      if (contact.phoneNumbers && contact.phoneNumbers.length > 0) {
+        return contact.phoneNumbers.some(phone =>
+          phone.number.replace(/[^\d]/g, '').includes(query.replace(/[^\d]/g, ''))
+        );
       }
 
-      return goal;
-    });
+      return false;
+    }).slice(0, 10);
 
-    if (JSON.stringify(updatedGoals) !== JSON.stringify(goals)) {
-      setGoals(updatedGoals);
-      saveGoals(updatedGoals);
-    }
-  };
+    setFilteredContacts(filtered);
+  }, [searchQuery, contacts]);
 
   const createGoal = async () => {
     if (!selectedContact) return;
@@ -284,7 +279,7 @@ export function CommunicationGoals({ contacts, interactions, onGoalCreated }: Pr
               </Text>
             </View>
             {goal.customNote && (
-              <Text style={styles.goalNote}>"{goal.customNote}"</Text>
+              <Text style={styles.goalNote}>{`"${goal.customNote}"`}</Text>
             )}
           </View>
           <View style={styles.goalActions}>
@@ -429,7 +424,7 @@ export function CommunicationGoals({ contacts, interactions, onGoalCreated }: Pr
                     </TouchableOpacity>
                   ))
                 ) : (
-                  <Text style={styles.noResultsText}>No contacts found for "{searchQuery}"</Text>
+                  <Text style={styles.noResultsText}>{`No contacts found for "${searchQuery}"`}</Text>
                 )}
               </View>
             )}

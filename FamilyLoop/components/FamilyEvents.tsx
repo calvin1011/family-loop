@@ -1,5 +1,5 @@
 // FamilyLoop/components/FamilyEvents.tsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -28,25 +28,25 @@ interface Contact {
   company?: string;
   department?: string;
   note?: string;
-  phoneNumbers?: Array<{
+  phoneNumbers?: {
     number?: string;
     isPrimary?: boolean;
     digits?: string;
     countryCode?: string;
     id: string;
     label?: string;
-  }>;
-  emails?: Array<{
+  }[];
+  emails?: {
     email?: string;
     isPrimary?: boolean;
     id: string;
     label?: string;
-  }>;
-  addresses?: Array<any>;
-  instantMessageAddresses?: Array<any>;
-  urlAddresses?: Array<any>;
-  dates?: Array<any>;
-  relationships?: Array<any>;
+  }[];
+  addresses?: unknown[];
+  instantMessageAddresses?: unknown[];
+  urlAddresses?: unknown[];
+  dates?: unknown[];
+  relationships?: unknown[];
   contactType?: string;
   imageAvailable?: boolean;
   image?: any;
@@ -71,12 +71,12 @@ interface FamilyEvent {
 }
 
 interface Props {
-  interactions: Array<{
+  interactions: {
     id: string;
     contactId: string;
     type: string;
     date: Date;
-  }>;
+  }[];
   onEventCreated?: () => void;
 }
 
@@ -96,6 +96,23 @@ const REMINDER_OPTIONS = [
   { days: 14, label: '2 weeks before' },
 ];
 
+function detectBasicRelationship(name: string) {
+  if (!name) return 'Contact';
+  const lowerName = name.toLowerCase();
+
+  if (lowerName.includes('mom') || lowerName.includes('mother')) return 'Mother';
+  if (lowerName.includes('dad') || lowerName.includes('father')) return 'Father';
+  if (lowerName.includes('sister') || lowerName.includes('sis')) return 'Sister';
+  if (lowerName.includes('brother') || lowerName.includes('bro')) return 'Brother';
+  if (lowerName.includes('uncle')) return 'Uncle';
+  if (lowerName.includes('aunt')) return 'Aunt';
+  if (lowerName.includes('grandma') || lowerName.includes('grandmother')) return 'Grandmother';
+  if (lowerName.includes('grandpa') || lowerName.includes('grandfather')) return 'Grandfather';
+  if (lowerName.includes('cousin')) return 'Cousin';
+
+  return 'Contact';
+}
+
 export function FamilyEvents({ interactions, onEventCreated }: Props) {
   const [events, setEvents] = useState<FamilyEvent[]>([]);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -105,7 +122,6 @@ export function FamilyEvents({ interactions, onEventCreated }: Props) {
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
   const [selectedEventType, setSelectedEventType] = useState<string>('birthday');
   const [eventTitle, setEventTitle] = useState('');
-  const [eventDate, setEventDate] = useState<Date>(new Date());
   const [isRecurring, setIsRecurring] = useState(true);
   const [selectedReminder, setSelectedReminder] = useState<number>(1);
   const [eventNotes, setEventNotes] = useState('');
@@ -119,32 +135,23 @@ export function FamilyEvents({ interactions, onEventCreated }: Props) {
   // Date input
   const [dateString, setDateString] = useState('');
 
-  useEffect(() => {
-    loadEvents();
-    loadAllContacts();
+  const loadEvents = useCallback(async () => {
+    try {
+      const stored = await AsyncStorage.getItem('family_events');
+      if (stored) {
+        const parsedEvents = JSON.parse(stored).map((event: any) => ({
+          ...event,
+          date: new Date(event.date),
+          lastWished: event.lastWished ? new Date(event.lastWished) : undefined,
+        }));
+        setEvents(parsedEvents);
+      }
+    } catch (error) {
+      console.error('Failed to load events:', error);
+    }
   }, []);
 
-  useEffect(() => {
-    updateEventTitle();
-  }, [selectedContact, selectedEventType]);
-
-  useEffect(() => {
-    if (!searchQuery.trim()) {
-      setFilteredContacts([]);
-      return;
-    }
-
-    const query = searchQuery.toLowerCase();
-    const filtered = allContacts.filter(contact => {
-      const name = (contact.name || '').toLowerCase();
-      const relationship = (contact.relationship || '').toLowerCase();
-      return name.includes(query) || relationship.includes(query);
-    }).slice(0, 10);
-
-    setFilteredContacts(filtered);
-  }, [searchQuery, allContacts]);
-
-  const loadAllContacts = async () => {
+  const loadAllContacts = useCallback(async () => {
     setContactsLoading(true);
     try {
       const { status } = await Contacts.requestPermissionsAsync();
@@ -165,26 +172,9 @@ export function FamilyEvents({ interactions, onEventCreated }: Props) {
       console.error('Failed to load contacts:', error);
     }
     setContactsLoading(false);
-  };
+  }, []);
 
-  const detectBasicRelationship = (name: string) => {
-    if (!name) return 'Contact';
-    const lowerName = name.toLowerCase();
-
-    if (lowerName.includes('mom') || lowerName.includes('mother')) return 'Mother';
-    if (lowerName.includes('dad') || lowerName.includes('father')) return 'Father';
-    if (lowerName.includes('sister') || lowerName.includes('sis')) return 'Sister';
-    if (lowerName.includes('brother') || lowerName.includes('bro')) return 'Brother';
-    if (lowerName.includes('uncle')) return 'Uncle';
-    if (lowerName.includes('aunt')) return 'Aunt';
-    if (lowerName.includes('grandma') || lowerName.includes('grandmother')) return 'Grandmother';
-    if (lowerName.includes('grandpa') || lowerName.includes('grandfather')) return 'Grandfather';
-    if (lowerName.includes('cousin')) return 'Cousin';
-
-    return 'Contact';
-  };
-
-  const updateEventTitle = () => {
+  const updateEventTitle = useCallback(() => {
     if (!selectedContact) return;
 
     const eventType = EVENT_TYPES.find(t => t.value === selectedEventType);
@@ -193,23 +183,32 @@ export function FamilyEvents({ interactions, onEventCreated }: Props) {
     } else {
       setEventTitle(`${selectedContact.name}'s ${eventType?.label || 'Event'}`);
     }
-  };
+  }, [selectedContact, selectedEventType]);
 
-  const loadEvents = async () => {
-    try {
-      const stored = await AsyncStorage.getItem('family_events');
-      if (stored) {
-        const parsedEvents = JSON.parse(stored).map((event: any) => ({
-          ...event,
-          date: new Date(event.date),
-          lastWished: event.lastWished ? new Date(event.lastWished) : undefined,
-        }));
-        setEvents(parsedEvents);
-      }
-    } catch (error) {
-      console.error('Failed to load events:', error);
+  useEffect(() => {
+    void loadEvents();
+    void loadAllContacts();
+  }, [loadEvents, loadAllContacts]);
+
+  useEffect(() => {
+    updateEventTitle();
+  }, [updateEventTitle]);
+
+  useEffect(() => {
+    if (!searchQuery.trim()) {
+      setFilteredContacts([]);
+      return;
     }
-  };
+
+    const query = searchQuery.toLowerCase();
+    const filtered = allContacts.filter(contact => {
+      const name = (contact.name || '').toLowerCase();
+      const relationship = (contact.relationship || '').toLowerCase();
+      return name.includes(query) || relationship.includes(query);
+    }).slice(0, 10);
+
+    setFilteredContacts(filtered);
+  }, [searchQuery, allContacts]);
 
   const saveEvents = async (newEvents: FamilyEvent[]) => {
     try {
@@ -386,7 +385,7 @@ export function FamilyEvents({ interactions, onEventCreated }: Props) {
             {event.daysUntil > 1 && ` (${event.daysUntil} days)`}
           </Text>
           {event.notes && (
-            <Text style={styles.eventNotes}>"{event.notes}"</Text>
+            <Text style={styles.eventNotes}>{`"${event.notes}"`}</Text>
           )}
         </View>
         <View style={styles.eventActions}>
@@ -526,7 +525,7 @@ export function FamilyEvents({ interactions, onEventCreated }: Props) {
                     </TouchableOpacity>
                   ))
                 ) : (
-                  <Text style={styles.noResultsText}>No contacts found for "{searchQuery}"</Text>
+                  <Text style={styles.noResultsText}>{`No contacts found for "${searchQuery}"`}</Text>
                 )}
               </View>
             )}
