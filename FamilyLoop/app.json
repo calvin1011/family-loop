@@ -20,7 +20,7 @@
       "permissions": [
         "READ_CALL_LOG",
         "READ_SMS",
-        "READ_CONTACTS",
+        "READ_CONTACTS"
       ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
