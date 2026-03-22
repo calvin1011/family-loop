@@ -1,7 +1,5 @@
 import React from 'react';
-import { StyleSheet, ScrollView, View, Text, TouchableOpacity } from 'react-native';
-import { ThemedText } from '@/components/ThemedText';
-import { ThemedView } from '@/components/ThemedView';
+import { StyleSheet, ScrollView, View, Text } from 'react-native';
 
 export default function ExploreScreen() {
   return (
@@ -51,26 +49,28 @@ export default function ExploreScreen() {
 
       {/* Logging Contact */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>📝 What Does "Logging Contact" Mean?</Text>
+        <Text style={styles.sectionTitle}>{'📝 What Does "Logging Contact" Mean?'}</Text>
         
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Track Your Interactions</Text>
           <Text style={styles.cardText}>
-            "Logging" means recording when you communicate with someone. This helps you:
-            {'\n'}• Remember who you haven't talked to recently
-            {'\n'}• Build better communication habits
-            {'\n'}• Stay closer to family and friends
+            {`"Logging" means recording when you communicate with someone. This helps you:
+• Remember who you haven't talked to recently
+• Build better communication habits
+• Stay closer to family and friends`}
           </Text>
         </View>
 
         <View style={styles.card}>
           <Text style={styles.cardTitle}>How to Log Contact</Text>
           <Text style={styles.cardText}>
-            1. Find the person in your contact list{'\n'}
-            2. Tap the green <Text style={styles.highlight}>"+ Log Contact"</Text> button{'\n'}
-            3. Choose how you connected: 📞 Call, 💬 Text, 👥 In Person, 📹 Video Call, or 💭 Other{'\n'}
-            4. Add an optional note about what you discussed{'\n'}
-            5. Tap "Log This Contact"
+            <Text>{`1. Find the person in your contact list
+2. Tap the green `}</Text>
+            <Text style={styles.highlight}>+ Log Contact</Text>
+            <Text>{` button
+3. Choose how you connected: 📞 Call, 💬 Text, 👥 In Person, 📹 Video Call, or 💭 Other
+4. Add an optional note about what you discussed
+5. Tap "Log This Contact"`}</Text>
           </Text>
         </View>
 
@@ -93,19 +93,19 @@ export default function ExploreScreen() {
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Start Conversations</Text>
           <Text style={styles.cardText}>
-            The Chat tab helps you message family and friends:
-            {'\n'}• Tap "+ New Chat" to start a conversation
-            {'\n'}• Choose someone from your contacts
-            {'\n'}• Or add a new contact manually
-            {'\n'}• Type your message and tap "Send"
+            {`The Chat tab helps you message family and friends:
+• Tap "+ New Chat" to start a conversation
+• Choose someone from your contacts
+• Or add a new contact manually
+• Type your message and tap "Send"`}
           </Text>
         </View>
 
         <View style={styles.card}>
           <Text style={styles.cardTitle}>How Messages Work</Text>
           <Text style={styles.cardText}>
-            Currently, messages open your phone's default SMS app to send real text messages. 
-            This ensures your family receives actual texts they can reply to normally.
+            {`Currently, messages open your phone's default SMS app to send real text messages. 
+This ensures your family receives actual texts they can reply to normally.`}
           </Text>
         </View>
       </View>
@@ -133,10 +133,10 @@ export default function ExploreScreen() {
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Build Good Habits</Text>
           <Text style={styles.cardText}>
-            • Check the app daily to see who you haven't contacted recently
-            {'\n'}• Set personal goals like "text Mom every 3 days"
-            {'\n'}• Use the color coding to prioritize who needs attention
-            {'\n'}• Add notes to remember what you talked about
+            {`• Check the app daily to see who you haven't contacted recently
+• Set personal goals like "text Mom every 3 days"
+• Use the color coding to prioritize who needs attention
+• Add notes to remember what you talked about`}
           </Text>
         </View>
 
@@ -156,10 +156,10 @@ export default function ExploreScreen() {
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Your Data Stays Private</Text>
           <Text style={styles.cardText}>
-            • Your contact list stays on your device
-            {'\n'}• Only you can see your interaction logs
-            {'\n'}• We don't share your family information
-            {'\n'}• All communication tracking is personal to you
+            {`• Your contact list stays on your device
+• Only you can see your interaction logs
+• We don't share your family information
+• All communication tracking is personal to you`}
           </Text>
         </View>
       </View>
@@ -169,7 +169,7 @@ export default function ExploreScreen() {
         <Text style={styles.sectionTitle}>🔧 Common Questions</Text>
         
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>Why don't I see all my contacts?</Text>
+          <Text style={styles.cardTitle}>{"Why don't I see all my contacts?"}</Text>
           <Text style={styles.cardText}>
             Family Loop filters out spam, business numbers, and contacts without names to focus on real relationships. Family members are always included.
           </Text>
@@ -178,14 +178,14 @@ export default function ExploreScreen() {
         <View style={styles.card}>
           <Text style={styles.cardTitle}>How do I add someone new?</Text>
           <Text style={styles.cardText}>
-            In the Chat tab, tap "+ New Chat" then "Add New Contact" to manually add someone with their phone number.
+            {`In the Chat tab, tap "+ New Chat" then "Add New Contact" to manually add someone with their phone number.`}
           </Text>
         </View>
 
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Can I delete a logged contact?</Text>
           <Text style={styles.cardText}>
-            Currently, you can't delete individual logs. This ensures you maintain an accurate history of your communication patterns.
+            {`Currently, you can't delete individual logs. This ensures you maintain an accurate history of your communication patterns.`}
           </Text>
         </View>
       </View>
@@ -196,7 +196,7 @@ export default function ExploreScreen() {
           Family Loop is designed to help you build stronger relationships with the people who matter most.
         </Text>
         <Text style={styles.footerSubtext}>
-          Remember: It's not about perfect tracking, it's about staying connected.
+          {"Remember: It's not about perfect tracking, it's about staying connected."}
         </Text>
       </View>
     </ScrollView>

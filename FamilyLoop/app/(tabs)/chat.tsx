@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import { Linking, Platform } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
+  Linking,
+  Platform,
   View,
   Text,
   StyleSheet,
@@ -9,7 +10,6 @@ import {
   TextInput,
   Alert,
   Modal,
-  Pressable
 } from 'react-native';
 import * as Contacts from 'expo-contacts';
 import { NameDetector } from '../../utils/nameDetector';
@@ -18,7 +18,7 @@ import { useAuth } from '@/contexts/AuthContext';
 interface Contact {
   id: string;
   name?: string;
-  phoneNumbers?: Array<{ number: string }>;
+  phoneNumbers?: { number: string }[];
   relationship?: string;
   group?: string;
   lastMessage?: string;
@@ -37,7 +37,7 @@ interface ChatMessage {
 const nameDetector = new NameDetector();
 
 export default function ChatScreen() {
-  const { user } = useAuth();
+  useAuth();
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [chats, setChats] = useState<ChatMessage[]>([]);
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
@@ -46,16 +46,37 @@ export default function ChatScreen() {
   const [showNewContactForm, setShowNewContactForm] = useState(false);
   const [newContactName, setNewContactName] = useState('');
   const [newContactPhone, setNewContactPhone] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [, setLoading] = useState(false);
 
-  // Load contacts on mount
-  useEffect(() => {
-    loadContacts();
-    // In a real app, you'd load existing chats from a database here
-    loadMockChats();
+  const smartFilterContacts = useCallback((allContacts: any[]) => {
+    return allContacts.filter(contact => {
+      const name = contact.name || '';
+      const relationship = nameDetector.detectRelationship(name);
+
+      if (['Mother', 'Father', 'Sister', 'Brother', 'Uncle', 'Aunt', 'Grandmother', 'Grandfather', 'Cousin'].includes(relationship)) {
+        return true;
+      }
+
+      if (!contact.phoneNumbers || contact.phoneNumbers.length === 0) {
+        return false;
+      }
+
+      const lowerName = name.toLowerCase();
+      if (lowerName.includes('spam') || lowerName.includes('telemarketer')) {
+        return false;
+      }
+
+      if (['Work', 'Friend'].includes(relationship)) {
+        return true;
+      }
+
+      const wordCount = name.split(' ').length;
+      const isReasonableLength = name.length <= 40;
+      return wordCount >= 2 && wordCount <= 4 && isReasonableLength;
+    }).slice(0, 100);
   }, []);
 
-  const loadContacts = async () => {
+  const loadContacts = useCallback(async () => {
     setLoading(true);
     try {
       const { status } = await Contacts.requestPermissionsAsync();
@@ -64,11 +85,9 @@ export default function ChatScreen() {
           fields: [Contacts.Fields.Name, Contacts.Fields.PhoneNumbers],
         });
 
-        // Apply smart filtering (same as home screen)
         const filteredContacts = smartFilterContacts(data);
         const enhancedContacts = nameDetector.autoGroupContacts(filteredContacts);
 
-        // Add chat-specific properties
         const chatContacts = enhancedContacts.map((contact: Contact) => ({
           ...contact,
           lastMessage: undefined,
@@ -78,47 +97,13 @@ export default function ChatScreen() {
 
         setContacts(chatContacts);
       }
-    } catch (error) {
+    } catch {
       Alert.alert('Error', 'Failed to load contacts');
     }
     setLoading(false);
-  };
+  }, [smartFilterContacts]);
 
-  const smartFilterContacts = (allContacts: any[]) => {
-    return allContacts.filter(contact => {
-      const name = contact.name || '';
-      const relationship = nameDetector.detectRelationship(name);
-
-      // Always keep family members
-      if (['Mother', 'Father', 'Sister', 'Brother', 'Uncle', 'Aunt', 'Grandmother', 'Grandfather', 'Cousin'].includes(relationship)) {
-        return true;
-      }
-
-      // Must have a phone number
-      if (!contact.phoneNumbers || contact.phoneNumbers.length === 0) {
-        return false;
-      }
-
-      // Filter out spam/business
-      const lowerName = name.toLowerCase();
-      if (lowerName.includes('spam') || lowerName.includes('telemarketer')) {
-        return false;
-      }
-
-      // Keep work contacts and friends
-      if (['Work', 'Friend'].includes(relationship)) {
-        return true;
-      }
-
-      // Keep contacts that look like real people
-      const wordCount = name.split(' ').length;
-      const isReasonableLength = name.length <= 40;
-      return wordCount >= 2 && wordCount <= 4 && isReasonableLength;
-    }).slice(0, 100); // Limit for chat list
-  };
-
-  // Mock some chat data for demonstration
-  const loadMockChats = () => {
+  const loadMockChats = useCallback(() => {
     const mockMessages: ChatMessage[] = [
       {
         id: '1',
@@ -162,7 +147,12 @@ export default function ChatScreen() {
       }
       return contact;
     }));
-  };
+  }, []);
+
+  useEffect(() => {
+    void loadContacts();
+    loadMockChats();
+  }, [loadContacts, loadMockChats]);
 
   const sendMessage = async () => {
   if (!messageText.trim() || !selectedContact) return;

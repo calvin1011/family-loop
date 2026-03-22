@@ -8,10 +8,7 @@ export default function ProfileScreen() {
   const { user, signOut, updateProfile, isLoading } = useAuth();
   const [modalVisible, setModalVisible] = useState(false);
   const [newDisplayName, setNewDisplayName] = useState(user?.displayName || '');
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
 
-  // Function to handle profile updates (name)
   const handleUpdateProfile = async () => {
     try {
       if (newDisplayName && newDisplayName !== user?.displayName) {
@@ -19,22 +16,9 @@ export default function ProfileScreen() {
         Alert.alert('Success', 'Profile updated successfully!');
       }
       setModalVisible(false);
-    } catch (error) {
+    } catch {
       Alert.alert('Error', 'Failed to update profile. Please try again.');
     }
-  };
-
-  // Function to handle password changes
-  const handleChangePassword = async () => {
-    if (newPassword !== confirmPassword) {
-      Alert.alert('Error', 'Passwords do not match.');
-      return;
-    }
-    // TODO: Implement password change logic with Firebase here
-    // Note: You will need to re-authenticate the user before changing the password
-    Alert.alert('Success', 'Password changed successfully!');
-    setNewPassword('');
-    setConfirmPassword('');
   };
 
   if (!user) {

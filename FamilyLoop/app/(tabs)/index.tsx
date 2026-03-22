@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert, Modal, TextInput, ScrollView } from 'react-native';
 import * as Contacts from 'expo-contacts';
 import { NameDetector } from '../../utils/nameDetector';
@@ -7,23 +7,10 @@ import {FamilyEvents} from "@/components/FamilyEvents";
 import { relationshipAnalyzer, RelationshipInsight } from '../../utils/RelationshipAnalyzer';
 import { automaticDetection } from '../../utils/AutomaticDetection';
 
-interface CommunicationGoal {
-  id: string;
-  contactId: string;
-  contactName: string;
-  frequency: string;
-  frequencyDays: number;
-  method: string;
-  isActive: boolean;
-  lastContacted?: Date;
-  nextDue?: Date;
-  customNote?: string;
-}
-
 interface Contact {
   id: string;
   name?: string;
-  phoneNumbers?: Array<{ number: string }>;
+  phoneNumbers?: { number: string }[];
   relationship?: string;
   group?: string;
   lastInteraction?: Date;
@@ -46,6 +33,30 @@ interface GroupedContacts {
 
 const nameDetector = new NameDetector();
 
+function smartFilterHomeContacts(allContacts: { name?: string; phoneNumbers?: { number: string }[] }[]) {
+  return allContacts.filter((contact) => {
+    const name = contact.name || '';
+    const relationship = nameDetector.detectRelationship(name);
+    if (['Mother', 'Father', 'Sister', 'Brother', 'Uncle', 'Aunt', 'Grandmother', 'Grandfather', 'Cousin'].includes(relationship)) {
+      return true;
+    }
+    if (!contact.phoneNumbers || contact.phoneNumbers.length === 0) {
+      return false;
+    }
+    const lowerName = name.toLowerCase();
+    if (lowerName.includes('spam') || lowerName.includes('telemarketer') || lowerName.includes('robocall')) {
+      return false;
+    }
+    if (['Work', 'Friend'].includes(relationship)) {
+      return true;
+    }
+    const wordCount = name.split(' ').length;
+    const isReasonableLength = name.length <= 40;
+    const looksLikePerson = wordCount >= 2 && wordCount <= 4 && isReasonableLength;
+    return looksLikePerson;
+  }).slice(0, 300);
+}
+
 export default function HomeScreen() {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [interactions, setInteractions] = useState<Interaction[]>([]);
@@ -59,10 +70,6 @@ export default function HomeScreen() {
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
   const [interactionType, setInteractionType] = useState<'call' | 'text' | 'in-person' | 'video-call' | 'other'>('call');
   const [interactionNote, setInteractionNote] = useState('');
-  const [communicationGoals, setCommunicationGoals] = useState<CommunicationGoal[]>([]);
-
-  // AI insights state
-  const [showInsights, setShowInsights] = useState(false);
   const [contactInsights, setContactInsights] = useState<Map<string, RelationshipInsight>>(new Map());
 
   const [autoDetectionEnabled, setAutoDetectionEnabled] = useState(false);
@@ -70,31 +77,112 @@ export default function HomeScreen() {
   const [lastScanTime, setLastScanTime] = useState<Date | null>(null);
 
 
-  useEffect(() => {
-    loadContacts();
+  const calculateInsights = useCallback(() => {
+    const insightsMap = new Map<string, RelationshipInsight>();
+    console.log(' Calculating insights...');
+    console.log(` Total contacts: ${contacts.length}`);
+    console.log(` Total interactions: ${interactions.length}`);
+    contacts.forEach((contact) => {
+      const insight = relationshipAnalyzer.calculateInsight(contact, interactions);
+      insightsMap.set(contact.id, insight);
+      if (insight.totalInteractions > 0) {
+        console.log(` Contact: ${contact.name}, Interactions: ${insight.totalInteractions}, Score: ${insight.score}`);
+      }
+    });
+    setContactInsights(insightsMap);
+  }, [contacts, interactions]);
+
+  const updateContactsWithInteractions = useCallback(() => {
+    if (contacts.length === 0) return;
+    const updatedContacts = contacts.map((contact) => {
+      const contactInteractions = interactions
+        .filter((interaction) => interaction.contactId === contact.id)
+        .sort((a, b) => b.date.getTime() - a.date.getTime());
+      const lastInteraction = contactInteractions[0];
+      if (lastInteraction) {
+        const daysSince = Math.floor((Date.now() - lastInteraction.date.getTime()) / (1000 * 60 * 60 * 24));
+        return {
+          ...contact,
+          lastInteraction: lastInteraction.date,
+          interactionType: lastInteraction.type,
+          interactionNote: lastInteraction.note,
+          daysSinceContact: daysSince,
+        };
+      }
+      return contact;
+    });
+    const grouped = updatedContacts.reduce((groups: GroupedContacts, contact: Contact) => {
+      const group = contact.group || 'Contacts';
+      if (!groups[group]) groups[group] = [];
+      groups[group].push(contact);
+      return groups;
+    }, {});
+    Object.keys(grouped).forEach((groupName) => {
+      grouped[groupName].sort((a, b) => {
+        const aDays = a.daysSinceContact ?? 999;
+        const bDays = b.daysSinceContact ?? 999;
+        return aDays - bDays;
+      });
+    });
+    setGroupedContacts(grouped);
+  }, [contacts, interactions]);
+
+  const loadContacts = useCallback(async () => {
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const { status } = await Contacts.requestPermissionsAsync();
+      setHasPermission(status === 'granted');
+      if (status === 'granted') {
+        const { data } = await Contacts.getContactsAsync({
+          fields: [Contacts.Fields.Name, Contacts.Fields.PhoneNumbers],
+        });
+        setTotalContacts(data.length);
+        const filteredContacts = smartFilterHomeContacts(data);
+        const enhancedContacts = nameDetector.autoGroupContacts(filteredContacts);
+        const trackedContacts = enhancedContacts.map((contact: Contact) => ({
+          ...contact,
+          lastInteraction: undefined,
+          interactionType: undefined,
+          interactionNote: undefined,
+          daysSinceContact: undefined,
+        }));
+        setContacts(trackedContacts);
+      } else {
+        setLoadError('Contact permission is required to track your family and friends.');
+      }
+    } catch (error) {
+      console.error('Failed to load contacts:', error);
+      setLoadError('Failed to load contacts. Please try again.');
+    }
+    setLoading(false);
   }, []);
+
+  useEffect(() => {
+    void loadContacts();
+  }, [loadContacts]);
 
   useEffect(() => {
     if (contacts.length > 0) {
       updateContactsWithInteractions();
     }
-  }, [interactions, contacts]);
+  }, [contacts, interactions, updateContactsWithInteractions]);
 
   useEffect(() => {
     if (contacts.length > 0) {
       calculateInsights();
     }
-  }, [interactions]);
+  }, [contacts, interactions, calculateInsights]);
 
-  useEffect(() => {
-    checkAutoDetectionStatus();
-  }, []);
-
-  const checkAutoDetectionStatus = async () => {
+  const checkAutoDetectionStatus = useCallback(async () => {
     const status = await automaticDetection.getStatus();
     setLastScanTime(status.lastScan);
     setAutoDetectionEnabled(status.isEnabled);
-  };
+  }, []);
+
+  useEffect(() => {
+    void checkAutoDetectionStatus();
+  }, [checkAutoDetectionStatus]);
 
   const enableAutoDetection = async () => {
     const hasPermissions = await automaticDetection.requestPermissions();
@@ -182,152 +270,6 @@ export default function HomeScreen() {
     }
 
     setIsScanning(false);
-  };
-
-  // Function to calculate insights
-  const calculateInsights = () => {
-    const insightsMap = new Map<string, RelationshipInsight>();
-
-    console.log(' Calculating insights...');
-    console.log(` Total contacts: ${contacts.length}`);
-    console.log(` Total interactions: ${interactions.length}`);
-
-    // Calculate insight for each contact
-    contacts.forEach(contact => {
-      const insight = relationshipAnalyzer.calculateInsight(contact, interactions);
-      insightsMap.set(contact.id, insight);
-
-      if (insight.totalInteractions > 0) {
-        console.log(` Contact: ${contact.name}, Interactions: ${insight.totalInteractions}, Score: ${insight.score}`);
-      }
-    });
-
-    setContactInsights(insightsMap);
-  };
-
-  const smartFilterContacts = (allContacts: any[]) => {
-    return allContacts.filter(contact => {
-      const name = contact.name || '';
-
-      const relationship = nameDetector.detectRelationship(name);
-      if (['Mother', 'Father', 'Sister', 'Brother', 'Uncle', 'Aunt', 'Grandmother', 'Grandfather', 'Cousin'].includes(relationship)) {
-        return true;
-      }
-
-      if (!contact.phoneNumbers || contact.phoneNumbers.length === 0) {
-        return false;
-      }
-
-      const lowerName = name.toLowerCase();
-      if (lowerName.includes('spam') ||
-          lowerName.includes('telemarketer') ||
-          lowerName.includes('robocall')) {
-        return false;
-      }
-
-      if (['Work', 'Friend'].includes(relationship)) {
-        return true;
-      }
-
-      // Keep contacts that look like real people
-      const wordCount = name.split(' ').length;
-      const isReasonableLength = name.length <= 40;
-      const looksLikePerson = wordCount >= 2 && wordCount <= 4 && isReasonableLength;
-
-      return looksLikePerson;
-    }).slice(0, 300); // Limit contacts to top 300 to keep app fast
-  };
-
-  const loadContacts = async () => {
-    setLoading(true);
-    setLoadError(null);
-
-    try {
-      const { status } = await Contacts.requestPermissionsAsync();
-      setHasPermission(status === 'granted');
-
-      if (status === 'granted') {
-        // Get all contacts from phone
-        const { data } = await Contacts.getContactsAsync({
-          fields: [Contacts.Fields.Name, Contacts.Fields.PhoneNumbers],
-        });
-
-        // Store total count for display
-        setTotalContacts(data.length);
-
-        // Apply smart filtering
-        const filteredContacts = smartFilterContacts(data);
-
-        // Apply AI detection to filtered contacts
-        const enhancedContacts = nameDetector.autoGroupContacts(filteredContacts);
-
-        // Add interaction tracking properties
-        const trackedContacts = enhancedContacts.map((contact: Contact) => ({
-          ...contact,
-          lastInteraction: undefined,
-          interactionType: undefined,
-          interactionNote: undefined,
-          daysSinceContact: undefined
-        }));
-
-        setContacts(trackedContacts);
-
-        // Immediately update grouping after setting contacts
-        updateContactsWithInteractions();
-      } else {
-        setLoadError('Contact permission is required to track your family and friends.');
-      }
-    } catch (error) {
-      console.error('Failed to load contacts:', error);
-      setLoadError('Failed to load contacts. Please try again.');
-    }
-    setLoading(false);
-  };
-
-  const updateContactsWithInteractions = () => {
-    if (contacts.length === 0) return;
-
-    const updatedContacts = contacts.map(contact => {
-      // Find most recent interaction for this contact
-      const contactInteractions = interactions
-        .filter(interaction => interaction.contactId === contact.id)
-        .sort((a, b) => b.date.getTime() - a.date.getTime());
-
-      const lastInteraction = contactInteractions[0];
-
-      if (lastInteraction) {
-        const daysSince = Math.floor((Date.now() - lastInteraction.date.getTime()) / (1000 * 60 * 60 * 24));
-
-        return {
-          ...contact,
-          lastInteraction: lastInteraction.date,
-          interactionType: lastInteraction.type,
-          interactionNote: lastInteraction.note,
-          daysSinceContact: daysSince
-        };
-      }
-
-      return contact;
-    });
-
-    // Group contacts by their detected category
-    const grouped = updatedContacts.reduce((groups: GroupedContacts, contact: Contact) => {
-      const group = contact.group || 'Contacts';
-      if (!groups[group]) groups[group] = [];
-      groups[group].push(contact);
-      return groups;
-    }, {});
-
-    // Sort each group by days since contact
-    Object.keys(grouped).forEach(groupName => {
-      grouped[groupName].sort((a, b) => {
-        const aDays = a.daysSinceContact ?? 999;
-        const bDays = b.daysSinceContact ?? 999;
-        return aDays - bDays;
-      });
-    });
-
-    setGroupedContacts(grouped);
   };
 
   const addInteraction = () => {
@@ -422,7 +364,7 @@ export default function HomeScreen() {
             </View>
             {contact.interactionNote && (
               <Text style={styles.interactionNote} numberOfLines={1}>
-                "{contact.interactionNote}"
+                {`"${contact.interactionNote}"`}
               </Text>
             )}
           </View>
@@ -718,8 +660,6 @@ export default function HomeScreen() {
         <CommunicationGoals
           contacts={contacts}
           interactions={interactions}
-          /*goals={communicationGoals}
-          onGoalsChange={setCommunicationGoals}*/
           onGoalCreated={() => {
             console.log('New goal created!');
           }}

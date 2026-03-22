@@ -1,227 +1,229 @@
-import React, { createContext, useContext, useState, useEffect, useMemo, ReactNode } from 'react';
-import { Platform } from 'react-native';
-import { initializeApp, getApp, getApps } from 'firebase/app';
-import { initializeAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword,
-  signOut as firebaseSignOut, updateProfile as firebaseUpdateProfile, GoogleAuthProvider, signInWithCredential,
-  getReactNativePersistence } from 'firebase/auth';
-import { useIdTokenAuthRequest } from "expo-auth-session/providers/google";
-import * as WebBrowser from 'expo-web-browser';
-import Constants from 'expo-constants';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import React, { createContext, useContext, useState, useEffect, useMemo, useCallback, ReactNode } from 'react';
+import { GoogleSignin } from '@react-native-google-signin/google-signin';
+import { supabase, isSupabaseConfigured } from '@/lib/supabase';
+import { mapSessionUser } from '@/lib/auth/mapSessionUser';
+import { normalizeToE164 } from '@/lib/phone';
+import type { AppUser } from '@/types';
 
-WebBrowser.maybeCompleteAuthSession();
-
-// Firebase configuration
-const firebaseConfig = {
-  apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
-  authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN,
-  projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID,
-  storageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID,
-};
-
-// Initialize Firebase
-const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
-
-// Initialize Firebase Auth with persistence
-const auth = initializeAuth(app, {
-  persistence: getReactNativePersistence(AsyncStorage)
+GoogleSignin.configure({
+  webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+  iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
 });
 
-interface User {
-  uid: string;
-  email?: string | null;
-  phoneNumber?: string | null;
-  displayName?: string | null;
-  photoURL?: string | null;
-  provider?: string | null;
-}
-
 interface AuthContextType {
-  user: User | null;
+  user: AppUser | null;
   isLoading: boolean;
   isAuthenticated: boolean;
   signInWithGoogle: () => Promise<void>;
-  signInWithPhone: (phoneNumber: string) => Promise<any>;
-  confirmPhoneCode: (confirmation: any, code: string) => Promise<void>;
+  signInWithPhone: (phoneNumber: string) => Promise<void>;
+  verifyPhoneOtp: (phoneNumber: string, code: string, displayName?: string) => Promise<void>;
   signInWithEmail: (email: string, password: string) => Promise<void>;
-  signUp: (email: string, password: string, displayName: string) => Promise<void>;
+  signUp: (
+    email: string,
+    password: string,
+    displayName: string
+  ) => Promise<{ needsEmailConfirmation: boolean }>;
   signOut: () => Promise<void>;
-  updateProfile: (updates: Partial<User>) => Promise<void>;
+  updateProfile: (updates: Partial<AppUser>) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
-const extra = Constants.expoConfig?.extra;
-
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<AppUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Configuration for Google Authentication
-  const googleAuthConfig = {
-    webClientId: (extra as any)?.secrets?.GOOGLE_WEB_CLIENT_ID || process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
-    androidClientId: (extra as any)?.secrets?.GOOGLE_ANDROID_CLIENT_ID || process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
-    iosClientId: (extra as any)?.secrets?.GOOGLE_IOS_CLIENT_ID || process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
-    scopes: ["profile", "email"] as string[],
-  } as const;
-
-  const [request, response, promptAsync] = useIdTokenAuthRequest({
-    clientId: Platform.select({
-      web: googleAuthConfig.webClientId,
-      android: googleAuthConfig.androidClientId,
-      ios: googleAuthConfig.iosClientId,
-    }),
-    scopes: googleAuthConfig.scopes,
-  });
-
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
-      console.log('Auth state changed:', firebaseUser ? 'User logged in' : 'User logged out');
+    if (!isSupabaseConfigured()) {
+      setUser(null);
+      setIsLoading(false);
+      return;
+    }
 
-      if (firebaseUser) {
-        const appUser: User = {
-          uid: firebaseUser.uid,
-          email: firebaseUser.email,
-          displayName: firebaseUser.displayName,
-          photoURL: firebaseUser.photoURL,
-          provider: firebaseUser.providerData?.[0]?.providerId
-        };
-        setUser(appUser);
-        console.log('User restored:', appUser.displayName || appUser.email);
-      } else {
-        setUser(null);
-      }
-
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ? mapSessionUser(session.user) : null);
       setIsLoading(false);
     });
 
-    return unsubscribe;
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ? mapSessionUser(session.user) : null);
+      setIsLoading(false);
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
-  // Google sign in response handler
-  useEffect(() => {
-    if (response?.type === 'success') {
-      const { id_token } = response.params;
-      const credential = GoogleAuthProvider.credential(id_token);
-      setIsLoading(true);
-      signInWithCredential(auth, credential)
-        .catch((error) => {
-          console.error("Firebase credential error:", error);
-        })
-        .finally(() => setIsLoading(false));
+  const signInWithGoogle = useCallback(async () => {
+    if (!isSupabaseConfigured()) {
+      throw new Error('Supabase is not configured. Set EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY.');
     }
-  }, [response]);
-
-  const signInWithGoogle = async () => {
-    if (!googleAuthConfig.androidClientId && Platform.OS === 'android') {
-      throw new Error('Missing androidClientId for Google auth');
+    if (!process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID) {
+      throw new Error('Google Sign-In is not configured. Set EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID.');
     }
-    try {
-      setIsLoading(true);
-      await promptAsync();
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const signInWithPhone = async (phoneNumber: string): Promise<any> => {
     setIsLoading(true);
     try {
-      // Note: Phone auth with Firebase Web SDK requires additional setup
-      // For now, this is a placeholder - you'll need to implement phone auth differently
-      throw new Error('Phone authentication not yet implemented with Firebase Web SDK');
-    } finally {
-      setIsLoading(false);
-    }
-  };
+      await GoogleSignin.hasPlayServices();
+      const result = await GoogleSignin.signIn();
+      const idToken = result.data?.idToken;
 
-  const confirmPhoneCode = async (confirmation: any, code: string) => {
-    setIsLoading(true);
-    try {
-      // Placeholder for phone code confirmation
-      throw new Error('Phone code confirmation not yet implemented with Firebase Web SDK');
-    } finally {
-      setIsLoading(false);
-    }
-  };
+      if (!idToken) throw new Error('No ID token returned from Google. Check web client ID and SHA-1 (Android).');
 
-  const signInWithEmail = async (email: string, password: string) => {
-    setIsLoading(true);
-    try {
-      await signInWithEmailAndPassword(auth, email, password);
-      // Firebase automatically persists the session
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const signUp = async (email: string, password: string, displayName: string) => {
-    setIsLoading(true);
-    try {
-      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      if (userCredential.user) {
-        await firebaseUpdateProfile(userCredential.user, { displayName: displayName });
-      }
-      // Firebase automatically persists the session
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const signOut = async (): Promise<void> => {
-    setIsLoading(true);
-    try {
-      await firebaseSignOut(auth);
-      // Firebase automatically clears the persisted session
-      console.log('User signed out');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const updateProfile = async (updates: Partial<User>) => {
-    const currentUser = auth.currentUser;
-    if (!currentUser) return;
-
-    setIsLoading(true);
-    try {
-      await firebaseUpdateProfile(currentUser, {
-        displayName: updates.displayName,
-        photoURL: updates.photoURL,
+      const { error } = await supabase.auth.signInWithIdToken({
+        provider: 'google',
+        token: idToken,
       });
+      if (error) throw error;
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
 
-      // Update local user state
-      if (user) {
-        const updatedUser = { ...user, ...updates };
-        setUser(updatedUser);
+  const signInWithPhone = useCallback(async (phoneNumber: string) => {
+    if (!isSupabaseConfigured()) {
+      throw new Error('Supabase is not configured.');
+    }
+    const e164 = normalizeToE164(phoneNumber);
+    if (e164.length < 8) {
+      throw new Error('Enter a valid phone number with area code (e.g. +15551234567).');
+    }
+    setIsLoading(true);
+    try {
+      const { error } = await supabase.auth.signInWithOtp({ phone: e164 });
+      if (error) throw error;
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  const verifyPhoneOtp = useCallback(async (phoneNumber: string, code: string, displayName?: string) => {
+    if (!isSupabaseConfigured()) {
+      throw new Error('Supabase is not configured.');
+    }
+    const e164 = normalizeToE164(phoneNumber);
+    setIsLoading(true);
+    try {
+      const { error } = await supabase.auth.verifyOtp({
+        phone: e164,
+        token: code.trim(),
+        type: 'sms',
+      });
+      if (error) throw error;
+      const name = displayName?.trim();
+      if (name) {
+        const { error: metaError } = await supabase.auth.updateUser({
+          data: { full_name: name },
+        });
+        if (metaError) throw metaError;
+        const { data: u } = await supabase.auth.getUser();
+        if (u.user) {
+          await supabase.from('profiles').update({ display_name: name }).eq('id', u.user.id);
+        }
       }
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
+
+  const signInWithEmail = useCallback(async (email: string, password: string) => {
+    if (!isSupabaseConfigured()) {
+      throw new Error('Supabase is not configured.');
+    }
+    setIsLoading(true);
+    try {
+      const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+      if (error) throw error;
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  const signUp = useCallback(async (email: string, password: string, displayName: string) => {
+    if (!isSupabaseConfigured()) {
+      throw new Error('Supabase is not configured.');
+    }
+    setIsLoading(true);
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email: email.trim(),
+        password,
+        options: { data: { full_name: displayName } },
+      });
+      if (error) throw error;
+      const needsEmailConfirmation = !data.session;
+      return { needsEmailConfirmation };
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  const signOut = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      await supabase.auth.signOut();
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  const updateProfile = useCallback(async (updates: Partial<AppUser>) => {
+    if (!user) return;
+    setIsLoading(true);
+    try {
+      const { error: authError } = await supabase.auth.updateUser({
+        data: {
+          full_name: updates.displayName ?? user.displayName,
+          avatar_url: updates.avatarUrl ?? user.avatarUrl,
+        },
+      });
+      if (authError) throw authError;
+
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .update({
+          display_name: updates.displayName ?? user.displayName ?? null,
+          avatar_url: updates.avatarUrl ?? user.avatarUrl ?? null,
+        })
+        .eq('id', user.id);
+      if (profileError) throw profileError;
+
+      setUser((prev) => (prev ? { ...prev, ...updates } : null));
+    } finally {
+      setIsLoading(false);
+    }
+  }, [user]);
 
   const isAuthenticated = user !== null;
 
-  const value = useMemo(() => ({
-    user,
-    isLoading,
-    isAuthenticated,
-    signInWithGoogle,
-    signInWithPhone,
-    confirmPhoneCode,
-    signInWithEmail,
-    signUp,
-    signOut,
-    updateProfile,
-  }), [user, isLoading, isAuthenticated, signInWithPhone, confirmPhoneCode, signInWithEmail, signUp, signOut, updateProfile, signInWithGoogle]);
-
-  return (
-    <AuthContext.Provider value={value}>
-      {children}
-    </AuthContext.Provider>
+  const value = useMemo(
+    () => ({
+      user,
+      isLoading,
+      isAuthenticated,
+      signInWithGoogle,
+      signInWithPhone,
+      verifyPhoneOtp,
+      signInWithEmail,
+      signUp,
+      signOut,
+      updateProfile,
+    }),
+    [
+      user,
+      isLoading,
+      isAuthenticated,
+      signInWithGoogle,
+      signInWithPhone,
+      verifyPhoneOtp,
+      signInWithEmail,
+      signUp,
+      signOut,
+      updateProfile,
+    ]
   );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
 export const useAuth = () => {

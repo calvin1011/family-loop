@@ -158,7 +158,7 @@
 ## Phase 1 - Infrastructure Foundation -- OPUS 4.6
 
 > **Agent:** Opus 4.6 (manual chat) for 1.1-1.3. Auto Agent for 1.4 after Opus sets up the patterns.
-> **Goal:** Add a real backend, real database, and real notifications
+> **Goal:** Add a real backend, real database, and real notifications, do a schema doc containing all data the user will need to run in supabase SQL editor
 > **Timeline:** 1-2 weeks
 > **Dependency:** Phase 0 complete
 >

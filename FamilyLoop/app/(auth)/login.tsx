@@ -1,32 +1,27 @@
-// FamilyLoop/app/(auth)/login.tsx
 import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Alert, KeyboardAvoidingView, Platform } from 'react-native';
 import { useAuth } from '@/contexts/AuthContext';
+import { formatAuthError } from '@/lib/auth/errors';
 import { router } from 'expo-router';
-import { FirebaseAuthTypes } from '@react-native-firebase/auth';
 
 export default function LoginScreen() {
-  const { signInWithGoogle, signInWithPhone, confirmPhoneCode, signInWithEmail, isLoading } = useAuth();
+  const { signInWithGoogle, signInWithPhone, verifyPhoneOtp, signInWithEmail, isLoading } = useAuth();
 
-  // Form state
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
-  const [verificationCode, setVerificationCode] = useState(''); // New state for the verification code
-  const [confirmation, setConfirmation] = useState<FirebaseAuthTypes.ConfirmationResult | null>(null); // New state to hold the confirmation object
+  const [verificationCode, setVerificationCode] = useState('');
+  const [otpSent, setOtpSent] = useState(false);
   const [authMethod, setAuthMethod] = useState<'email' | 'phone' | 'google'>('email');
 
-  // Handle Google Sign In
   const handleGoogleSignIn = async () => {
     try {
       await signInWithGoogle();
-      // Navigation will be handled by AuthProvider state change
     } catch (error) {
-      Alert.alert('Sign In Failed', 'Unable to sign in with Google. Please try again.');
+      Alert.alert('Sign In Failed', formatAuthError(error));
     }
   };
 
-  // Handle Email Sign In
   const handleEmailSignIn = async () => {
     if (!email || !password) {
       Alert.alert('Missing Information', 'Please enter both email and password.');
@@ -35,39 +30,34 @@ export default function LoginScreen() {
     try {
       await signInWithEmail(email, password);
     } catch (error) {
-      Alert.alert('Sign In Failed', 'Invalid email or password. Please try again.');
+      Alert.alert('Sign In Failed', formatAuthError(error));
     }
   };
 
-  // Handle Phone Sign In
   const handlePhoneSignIn = async () => {
     if (!phoneNumber) {
       Alert.alert('Missing Information', 'Please enter your phone number.');
       return;
     }
     try {
-      // This sends the code and gives us back a confirmation object
-      const confirmationResult = await signInWithPhone(phoneNumber);
-      setConfirmation(confirmationResult);
+      await signInWithPhone(phoneNumber);
+      setOtpSent(true);
       Alert.alert('Code Sent', 'Please enter the verification code sent to your phone.');
     } catch (error) {
-      Alert.alert('Sign In Failed', 'Unable to send verification code. Please try again.');
+      Alert.alert('Sign In Failed', formatAuthError(error));
     }
   };
 
-  // Handle Phone Code Confirmation
   const handlePhoneCodeConfirm = async () => {
     if (!verificationCode) {
       Alert.alert('Missing Information', 'Please enter the verification code.');
       return;
     }
     try {
-      if (confirmation) {
-        await confirmPhoneCode(confirmation, verificationCode);
-        setConfirmation(null); // Clear confirmation state
-      }
+      await verifyPhoneOtp(phoneNumber, verificationCode);
+      setOtpSent(false);
     } catch (error) {
-      Alert.alert('Sign In Failed', 'Invalid verification code. Please try again.');
+      Alert.alert('Sign In Failed', formatAuthError(error));
     }
   };
 
@@ -118,7 +108,6 @@ export default function LoginScreen() {
         </View>
 
         <View style={styles.formContainer}>
-          {/* Email Sign In Form */}
           {authMethod === 'email' && (
             <>
               <View style={styles.inputGroup}>
@@ -159,10 +148,9 @@ export default function LoginScreen() {
             </>
           )}
 
-          {/* Phone Sign In Form */}
           {authMethod === 'phone' && (
             <>
-              {!confirmation ? (
+              {!otpSent ? (
                 <>
                   <View style={styles.inputGroup}>
                     <Text style={styles.label}>Phone Number</Text>
@@ -188,7 +176,7 @@ export default function LoginScreen() {
                   </TouchableOpacity>
 
                   <Text style={styles.helpText}>
-                    We'll send you a verification code to confirm your number
+                    {"We'll send you a verification code to confirm your number"}
                   </Text>
                 </>
               ) : (
@@ -223,7 +211,6 @@ export default function LoginScreen() {
             </>
           )}
 
-          {/* Google Sign In */}
           {authMethod === 'google' && (
             <>
               <TouchableOpacity
@@ -243,7 +230,6 @@ export default function LoginScreen() {
           )}
         </View>
 
-        {/* Sign Up Link */}
         <View style={styles.footer}>
           <Text style={styles.footerText}>New to Family Loop?</Text>
           <TouchableOpacity onPress={goToSignUp}>
@@ -258,7 +244,7 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8F9FA', // Soft, calming background
+    backgroundColor: '#F8F9FA',
   },
   scrollContent: {
     flexGrow: 1,
@@ -272,13 +258,13 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 28,
     fontWeight: '700',
-    color: '#2C3E50', // Calm, readable color
+    color: '#2C3E50',
     marginBottom: 8,
     textAlign: 'center',
   },
   subtitle: {
     fontSize: 16,
-    color: '#7F8C8D', // Muted, non-urgent
+    color: '#7F8C8D',
     textAlign: 'center',
     lineHeight: 22,
     maxWidth: 280,
@@ -302,7 +288,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   methodButtonActive: {
-    backgroundColor: '#E8F4FD', // Soft blue, not aggressive
+    backgroundColor: '#E8F4FD',
   },
   methodText: {
     fontSize: 16,
