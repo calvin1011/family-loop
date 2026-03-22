@@ -1,0 +1,16 @@
+---
+description: Tests and verification for critical FamilyLoop features
+alwaysApply: true
+---
+
+# Critical features: tests + verification
+
+**Critical** includes: authentication/session, contact or call/SMS access, persistence/sync of user data, relationship scoring or auto-detection, payments (if added), anything handling PII or secrets.
+
+When implementing or materially changing a **critical** feature:
+
+1. **Add or update automated tests** (unit or integration) that cover the new behavior and main failure paths. If the repo has no test runner yet for that area, add the minimal Jest/`jest-expo` (or project-standard) setup in the same change set so tests can run in CI later.
+2. **Run verification before finishing:** from `FamilyLoop/`, run `npm run lint` (required today). When a `test` script exists, run `npm test` for the touched critical paths.
+3. **Do not** ship critical logic with only manual “it works on my machine” checks.
+
+Non-critical UI copy or pure styling may skip new tests unless behavior is easy to regress.

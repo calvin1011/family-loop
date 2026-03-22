@@ -1,0 +1,6 @@
+# JetBrains / PyCharm / IntelliJ
+.idea/
+
+# OS
+Thumbs.db
+Desktop.ini
