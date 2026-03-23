@@ -6,3 +6,5 @@ Thumbs.db
 Desktop.ini
 
 supabase/
+
+.env.example

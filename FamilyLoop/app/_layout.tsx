@@ -1,6 +1,6 @@
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { useFonts } from 'expo-font';
-import { Stack, router } from 'expo-router';
+import { Stack, router, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect } from 'react';
 import { View, Text } from 'react-native';
@@ -11,16 +11,20 @@ import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 
 function RootLayoutNav() {
   const { isAuthenticated, isLoading } = useAuth();
+  const segments = useSegments();
 
   useEffect(() => {
-    if (!isLoading) {
-      if (!isAuthenticated) {
-        router.replace('/(auth)/onboarding');
-      } else {
-        router.replace('/(tabs)');
-      }
+    if (isLoading || segments.length === 0) return;
+
+    const inAuthGroup = segments[0] === '(auth)';
+    const inTabsGroup = segments[0] === '(tabs)';
+
+    if (isAuthenticated && !inTabsGroup) {
+      router.replace('/(tabs)');
+    } else if (!isAuthenticated && !inAuthGroup) {
+      router.replace('/(auth)/onboarding');
     }
-  }, [isAuthenticated, isLoading]);
+  }, [isAuthenticated, isLoading, segments]);
 
   if (isLoading) {
     return (
