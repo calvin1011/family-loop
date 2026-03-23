@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -12,6 +12,11 @@ import {
 } from 'react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { formatAuthError } from '@/lib/auth/errors';
+import {
+  savePhoneOtpPending,
+  loadPhoneOtpPending,
+  clearPhoneOtpPending,
+} from '@/lib/auth/phoneOtpPending';
 import { router } from 'expo-router';
 
 export default function SignUpScreen() {
@@ -28,6 +33,28 @@ export default function SignUpScreen() {
   const [phoneDisplayName, setPhoneDisplayName] = useState('');
   const [verificationCode, setVerificationCode] = useState('');
   const [otpSent, setOtpSent] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
+
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const timer = setTimeout(() => setResendCooldown((c) => c - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [resendCooldown]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const pending = await loadPhoneOtpPending();
+      if (cancelled || !pending || pending.flow !== 'signup') return;
+      setAuthMethod('phone');
+      setPhoneNumber(pending.phoneRaw);
+      setPhoneDisplayName(pending.displayName);
+      setOtpSent(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleEmailSignUp = async () => {
     if (!displayName || !email || !password || !confirmPassword) {
@@ -56,19 +83,29 @@ export default function SignUpScreen() {
     }
   };
 
-  const handlePhoneSendCode = async () => {
+  const sendOtp = async (isResend = false) => {
     if (!phoneNumber.trim()) {
       Alert.alert('Missing Information', 'Please enter your phone number.');
       return;
     }
     try {
       await signInWithPhone(phoneNumber);
-      setOtpSent(true);
-      Alert.alert('Code Sent', 'Enter the verification code we sent to your phone.');
+      if (!isResend) setOtpSent(true);
+      setResendCooldown(60);
+      setVerificationCode('');
+      await savePhoneOtpPending({
+        phoneRaw: phoneNumber.trim(),
+        displayName: phoneDisplayName.trim(),
+        flow: 'signup',
+      });
+      Alert.alert(isResend ? 'Code Resent' : 'Code Sent', 'Enter the verification code we sent to your phone.');
     } catch (error) {
       Alert.alert('Sign Up Failed', formatAuthError(error));
     }
   };
+
+  const handlePhoneSendCode = () => sendOtp(false);
+  const handlePhoneResend = () => sendOtp(true);
 
   const handlePhoneVerify = async () => {
     if (!verificationCode.trim()) {
@@ -78,8 +115,14 @@ export default function SignUpScreen() {
     try {
       await verifyPhoneOtp(phoneNumber, verificationCode, phoneDisplayName.trim() || undefined);
       setOtpSent(false);
+      await clearPhoneOtpPending();
     } catch (error) {
-      Alert.alert('Sign Up Failed', formatAuthError(error));
+      const msg = formatAuthError(error);
+      const isExpired = /expir|invalid/i.test(msg);
+      Alert.alert(
+        'Sign Up Failed',
+        isExpired ? `${msg}\n\nYou can resend the code or use a different number.` : msg,
+      );
     }
   };
 
@@ -108,32 +151,34 @@ export default function SignUpScreen() {
           </Text>
         </View>
 
-        <View style={styles.methodSelector}>
-          <TouchableOpacity
-            style={[styles.methodButton, authMethod === 'email' && styles.methodButtonActive]}
-            onPress={() => setAuthMethod('email')}
-          >
-            <Text style={[styles.methodText, authMethod === 'email' && styles.methodTextActive]}>
-              Email
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.methodButton, authMethod === 'phone' && styles.methodButtonActive]}
-            onPress={() => setAuthMethod('phone')}
-          >
-            <Text style={[styles.methodText, authMethod === 'phone' && styles.methodTextActive]}>
-              Phone
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.methodButton, authMethod === 'google' && styles.methodButtonActive]}
-            onPress={() => setAuthMethod('google')}
-          >
-            <Text style={[styles.methodText, authMethod === 'google' && styles.methodTextActive]}>
-              Google
-            </Text>
-          </TouchableOpacity>
-        </View>
+        {!otpSent && (
+          <View style={styles.methodSelector}>
+            <TouchableOpacity
+              style={[styles.methodButton, authMethod === 'email' && styles.methodButtonActive]}
+              onPress={() => setAuthMethod('email')}
+            >
+              <Text style={[styles.methodText, authMethod === 'email' && styles.methodTextActive]}>
+                Email
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.methodButton, authMethod === 'phone' && styles.methodButtonActive]}
+              onPress={() => setAuthMethod('phone')}
+            >
+              <Text style={[styles.methodText, authMethod === 'phone' && styles.methodTextActive]}>
+                Phone
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.methodButton, authMethod === 'google' && styles.methodButtonActive]}
+              onPress={() => setAuthMethod('google')}
+            >
+              <Text style={[styles.methodText, authMethod === 'google' && styles.methodTextActive]}>
+                Google
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         {authMethod === 'email' && (
           <View style={styles.formContainer}>
@@ -258,6 +303,27 @@ export default function SignUpScreen() {
                   </Text>
                 </TouchableOpacity>
                 <Text style={styles.helpText}>Code sent to {phoneNumber}</Text>
+
+                <TouchableOpacity
+                  style={[styles.secondaryButton, (isLoading || resendCooldown > 0) && styles.buttonDisabled]}
+                  onPress={handlePhoneResend}
+                  disabled={isLoading || resendCooldown > 0}
+                >
+                  <Text style={styles.secondaryButtonText}>
+                    {resendCooldown > 0 ? `Resend code (${resendCooldown}s)` : 'Resend code'}
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={async () => {
+                    setOtpSent(false);
+                    setVerificationCode('');
+                    setResendCooldown(0);
+                    await clearPhoneOtpPending();
+                  }}
+                >
+                  <Text style={styles.linkText}>Use a different number</Text>
+                </TouchableOpacity>
               </>
             )}
           </View>
@@ -451,6 +517,21 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#34A853',
     fontWeight: 'bold',
+  },
+  secondaryButton: {
+    width: '100%',
+    backgroundColor: 'transparent',
+    padding: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#34A853',
+  },
+  secondaryButtonText: {
+    color: '#34A853',
+    fontSize: 16,
+    fontWeight: '600',
   },
   buttonDisabled: {
     opacity: 0.5,

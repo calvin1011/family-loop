@@ -1,4 +1,4 @@
-import { normalizeToE164 } from '@/lib/phone';
+import { normalizeToE164, phonesEqualE164 } from '@/lib/phone';
 
 describe('normalizeToE164', () => {
   it('adds US country code for 10 digits', () => {
@@ -16,5 +16,16 @@ describe('normalizeToE164', () => {
   it('returns empty for empty input', () => {
     expect(normalizeToE164('')).toBe('');
     expect(normalizeToE164('   ')).toBe('');
+  });
+});
+
+describe('phonesEqualE164', () => {
+  it('matches equivalent US numbers', () => {
+    expect(phonesEqualE164('8572127342', '+18572127342')).toBe(true);
+    expect(phonesEqualE164('+1 857 212 7342', '8572127342')).toBe(true);
+  });
+
+  it('does not match different numbers', () => {
+    expect(phonesEqualE164('+15551234567', '+15559876543')).toBe(false);
   });
 });

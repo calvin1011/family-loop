@@ -24,3 +24,7 @@ export function normalizeToE164(input: string, defaultCountryCode = '1'): string
 
   return `+${digitsOnly}`;
 }
+
+export function phonesEqualE164(a: string, b: string): boolean {
+  return normalizeToE164(a) === normalizeToE164(b);
+}
